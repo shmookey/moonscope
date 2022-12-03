@@ -7,50 +7,41 @@ import {
 
 const { asin, sin, cos, log, min, max, random, PI } = Math
 
-
-let [U, V] = [1, 1]
-let angle = PI/2
-let freq = 3
-const sources: [number, number,number,boolean][] = []
-const presetBaselines: number[] = [
-//  1, 1, 0, 0,
-//  
-//  1, 1, 0, 0,
-//  1, 1, 0, PI,
-]
-const batchSize = 10
-let baselines: Float32Array = new Float32Array(batchSize*4)
-let numBaselines = 0
-function generateVisibilities() {
-  //presetBaselines.length = 0
-  for(let i=0; i<10000; i++) {
-    let angle = random()*2*PI - PI
-    let freq = max(1.0, random() *min(400, numBaselines))
-    for(let [U,V,A,isBright] of sources) {
-      let B = isBright ? 0 : PI
-      let phase = U*cos(angle) + V*sin(angle)
-      presetBaselines.push(
-        freq,
-        A,
-        angle,
-        freq * phase + B,
-      )
-    }
-    numBaselines++
-  }
-  
+type VisGenState = {
+  // Config
+  width: number,
+  height: number,
+  layers: number,
+  sublayersPerLayer: number,
+  ingestBufferSize: number,
+  dataSource: Iterator<LayerData>,
+  // Local buffers
+  vertexData: Float32Array,
+  uniformData: Float32Array,
+  instanceData: Float32Array,
+  // GPU buffers
+  vertexBuffer: GPUBuffer,
+  instanceBuffer: GPUBuffer,
+  uniformBuffer: GPUBuffer,
+  exportBuffer: GPUBuffer,
+  // Pipeline
+  pipeline: GPURenderPipeline,
+  uniformBindGroup: GPUBindGroup,
+  renderPassDescriptor: GPURenderPassDescriptor,
+  texture: GPUTexture,
 }
 
+export type LayerData = [
+  number, // frequency
+  number, // amplitude
+  number, // rotation
+  number, // phase
+][]
 
-function nextBaselines() {
-  if(presetBaselines.length < batchSize*4) {
-    console.log('end')
-    return false
-  }
-  baselines.set(presetBaselines.slice(0, batchSize*4))
-  presetBaselines.splice(0, batchSize*4)
-  return true
-}
+const SUBLAYER_ELEMS     = 4
+const SUBLAYER_SIZE      = SUBLAYER_ELEMS * 4
+const VERTEX_COUNT       = 6
+const VIS_TEXTURE_FORMAT = 'r16float'
 
 //sources.push([0,0,80,true])
 //sources.push([0.6,1,10,true])
@@ -58,35 +49,22 @@ function nextBaselines() {
 //sources.push([1,1.9,10,true])
 //sources.push([1,0,1,true])
 //sources.push([0,0,10,false])
-for(let i=0; i<10; i++) {
-  let x = (random()**2) * PI/1.5  // 3 - log(random()*1000)/Math.log(10)
-  if(random() > 0.5) x = -x
 
-  let y = (random()**2) * PI/2
-  if(random() > 0.5) y = -y
-
-  sources.push([
-    x,                  // u
-    y,                  // v
-    random()*20,        // a
-    random() > 0.5,     // light/dark
-  ])
-}
 
 //baselines = presetBaselines
-generateVisibilities()
-nextBaselines()
+//generateVisibilities()
+//nextBaselines()
 
-export function frame(state: any, skyState: any, gpu: GPUContext) {
-  if(!nextBaselines()) return
-  //generateVisibilities();
-  //baselines[2] = PI/2;
-  (state.instanceData as Float32Array).set(baselines)
-  gpu.device.queue.writeBuffer(state.instanceBuffer, 0, state.instanceData)
-  render(state, gpu)
-  state.numBaselines += 10
-  updateSkyUniforms(state.numBaselines, skyState, gpu)
-}
+//export function frame(state: any, skyState: any, gpu: GPUContext) {
+//  if(!nextBaselines()) return
+//  //generateVisibilities();
+//  //baselines[2] = PI/2;
+//  (state.instanceData as Float32Array).set(baselines)
+//  gpu.device.queue.writeBuffer(state.instanceBuffer, 0, state.instanceData)
+//  render(state, gpu)
+//  state.numBaselines += 10
+//  updateSkyUniforms(state.numBaselines, skyState, gpu)
+//}
 
 //addSource(0, 0)
 //addSource(1, 0)
@@ -98,11 +76,64 @@ export function frame(state: any, skyState: any, gpu: GPUContext) {
 //    0.2 + random() * 0.0001,
 //  )
 //}
-const textureFormat = 'r16float'
 
-export async function create(gpu: GPUContext) {
-  const width = 1280 // gpu.presentationSize.width
-  const height = 1280 // gpu.presentationSize.height
+
+
+
+export function applyLayers(layerCount: number, state: VisGenState, gpu: GPUContext): void {
+  const sublayerCount = layerCount * state.sublayersPerLayer
+  const ingestElems = sublayerCount * SUBLAYER_ELEMS
+  const ingestSize = sublayerCount * SUBLAYER_SIZE
+  if(ingestSize > state.ingestBufferSize)
+    throw 'Ingest size exceeds ingest buffer size.'
+  for(let layer=0; layer<layerCount; layer++) {
+    const result = state.dataSource.next()
+    const layerData: LayerData = result.value
+    for(let sublayer=0; sublayer<state.sublayersPerLayer; sublayer++) {
+      const sublayerData = layerData[sublayer]
+      const dst = (layer*state.sublayersPerLayer + sublayer) * SUBLAYER_ELEMS
+      state.instanceData.set(sublayerData, dst)
+    }
+  }
+
+  gpu.device.queue.writeBuffer(state.instanceBuffer, 0, state.instanceData, 0, ingestElems)
+
+  const commandEncoder = gpu.device.createCommandEncoder()
+  const passEncoder = commandEncoder.beginRenderPass(state.renderPassDescriptor)
+  passEncoder.setPipeline(state.pipeline)
+  passEncoder.setVertexBuffer(0, state.vertexBuffer)
+  passEncoder.setVertexBuffer(1, state.instanceBuffer)
+  passEncoder.setBindGroup(0, state.uniformBindGroup)
+  passEncoder.draw(VERTEX_COUNT, sublayerCount, 0, 0)
+  passEncoder.end()
+  gpu.device.queue.submit([commandEncoder.finish()])
+
+  state.layers += layerCount
+}
+
+export function grabVisTexture(state: VisGenState, gpu: GPUContext): void {
+  const commandEncoder = gpu.device.createCommandEncoder()
+  commandEncoder.copyTextureToBuffer({
+    texture: state.texture
+  }, {
+    buffer: state.exportBuffer, 
+    bytesPerRow: state.width*2
+  }, {
+    width: state.width, 
+    height: state.height
+  })
+  gpu.device.queue.submit([commandEncoder.finish()])
+}
+
+export async function create(
+      width:             number,
+      height:            number,
+      ingestBufferSize:  number,
+      sublayersPerLayer: number,
+      dataSource:        Iterator<LayerData>,
+      gpu:               GPUContext
+    ): Promise<VisGenState> {
+
   const vertexData = new Float32Array([
     -1, -1, 0, 1, -PI, -PI,
      1, -1, 0, 1,  PI, -PI,
@@ -112,10 +143,10 @@ export async function create(gpu: GPUContext) {
      1,  1, 0, 1,  PI, PI,
     -1,  1, 0, 1, -PI, PI,
   ])
-  const instanceData = new Float32Array(baselines)
+  const instanceData = new Float32Array(ingestBufferSize / 4)
   const texture = gpu.device.createTexture({
     size: [width, height, 1],
-    format: textureFormat,
+    format: VIS_TEXTURE_FORMAT,
     usage:
       GPUTextureUsage.TEXTURE_BINDING |
       GPUTextureUsage.COPY_SRC |
@@ -127,16 +158,23 @@ export async function create(gpu: GPUContext) {
   })
   const instanceBuffer = gpu.device.createBuffer({
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    size: instanceData.byteLength,
+    size: ingestBufferSize,
   })
-  const instanceCount = baselines.length / 4
-  gpu.device.queue.writeBuffer(vertexBuffer, 0, vertexData)
-  gpu.device.queue.writeBuffer(instanceBuffer, 0, instanceData)
   const vertexShader = await loadShader('/shader/vis.vert.wgsl', gpu)
   const fragmentShader = await loadShader('/shader/vis.frag.wgsl', gpu)
   
+  const bindGroupLayout = gpu.device.createBindGroupLayout({
+    entries: [{
+      binding: 0, 
+      visibility: GPUShaderStage.FRAGMENT,
+      buffer: { type: 'uniform' },
+    }]
+  })
+  const pipelineLayout = gpu.device.createPipelineLayout({
+    bindGroupLayouts: [bindGroupLayout],
+  })
   const pipeline = gpu.device.createRenderPipeline({
-    layout: 'auto',
+    layout: pipelineLayout,
     vertex: {
       module: vertexShader,
       entryPoint: 'main',
@@ -162,7 +200,7 @@ export async function create(gpu: GPUContext) {
       module: fragmentShader,
       entryPoint: 'main',
       targets: [{
-        format: textureFormat,
+        format: VIS_TEXTURE_FORMAT,
         blend: {
           color: { operation: 'add', srcFactor: 'one', dstFactor: 'one' },
           alpha: { operation: 'add', srcFactor: 'one', dstFactor: 'one' }
@@ -183,20 +221,22 @@ export async function create(gpu: GPUContext) {
     size: 8,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   })
-  //const uniformBindGroup = gpu.device.createBindGroup({
-  //  layout: pipeline.getBindGroupLayout(0),
-  //  entries: [{
-  //    binding: 0,
-  //    resource: {buffer: uniformBuffer},
-  //  }],
-  //})
-  //const uniformData = new Float32Array([0.5, 3.14])
-  //gpu.device.queue.writeBuffer(uniformBuffer, 0, uniformData)
+  const uniformBindGroup = gpu.device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [{
+      binding: 0,
+      resource: {buffer: uniformBuffer},
+    }],
+  })
+  const uniformData = new Float32Array([sublayersPerLayer])
+
+  gpu.device.queue.writeBuffer(vertexBuffer, 0, vertexData)
+  gpu.device.queue.writeBuffer(uniformBuffer, 0, uniformData)
 
   const renderPassDescriptor: GPURenderPassDescriptor = {
     colorAttachments: [{
       view: texture.createView({
-        format: textureFormat,
+        format: VIS_TEXTURE_FORMAT,
         dimension: '2d',
         mipLevelCount: 1,
       }),
@@ -211,17 +251,19 @@ export async function create(gpu: GPUContext) {
     height,
     pipeline,
     vertexBuffer,
-    vertexCount: 6,
-    instanceCount,
     instanceBuffer,
+    uniformData,
     uniformBuffer,
-    //uniformBindGroup,
+    uniformBindGroup,
     renderPassDescriptor,
     texture,
     vertexData,
     instanceData,
     exportBuffer,
-    numBaselines: 1,
+    layers: 0,
+    sublayersPerLayer,
+    dataSource,
+    ingestBufferSize,
   }
 }
 
@@ -244,7 +286,7 @@ export function updateSkyUniforms(numBaselines: number, state: any, gpu: GPUCont
   gpu.device.queue.writeBuffer(uniformBuffer, 0, uniformData)
 }
 
-export async function createSkyRenderer(numBaselines: number, visTexture: GPUTexture, gpu: GPUContext): Promise<Renderable> {
+export async function createSkyRenderer(visTexture: GPUTexture, gpu: GPUContext): Promise<Renderable> {
   const vertexData = new Float32Array([
     -1, -1, 0, 1, 0, 0,
      1, -1, 0, 1, 1, 0,
@@ -258,7 +300,7 @@ export async function createSkyRenderer(numBaselines: number, visTexture: GPUTex
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     size: 4,
   })
-  const uniformData = new Uint32Array([numBaselines])
+  const uniformData = new Uint32Array([0])
 
   const vertexBuffer = gpu.device.createBuffer({
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, 
@@ -323,7 +365,7 @@ export async function createSkyRenderer(numBaselines: number, visTexture: GPUTex
     entries: [
       { binding: 0, resource: { buffer: uniformBuffer } }, 
       { binding: 1, resource: sampler }, 
-      { binding: 2, resource: visTexture.createView({ format: textureFormat }) },
+      { binding: 2, resource: visTexture.createView({ format: VIS_TEXTURE_FORMAT }) },
     ]
   })
 
@@ -338,15 +380,15 @@ export async function createSkyRenderer(numBaselines: number, visTexture: GPUTex
   }
 }
 
-export function render(state: any, gpu: GPUContext) {
-  const commandEncoder = gpu.device.createCommandEncoder()
-  const passEncoder = commandEncoder.beginRenderPass(state.renderPassDescriptor)
-  passEncoder.setPipeline(state.pipeline)
-  passEncoder.setVertexBuffer(0, state.vertexBuffer)
-  passEncoder.setVertexBuffer(1, state.instanceBuffer)
-  //passEncoder.setBindGroup(0, entity.uniformBindGroup)
-  passEncoder.draw(state.vertexCount, state.instanceCount, 0, 0)
-  passEncoder.end()
-  commandEncoder.copyTextureToBuffer({texture: state.texture}, {buffer: state.exportBuffer, bytesPerRow: state.width*2}, {width: state.width, height: state.height})
-  gpu.device.queue.submit([commandEncoder.finish()])
-}
+//export function render(state: any, gpu: GPUContext) {
+//  const commandEncoder = gpu.device.createCommandEncoder()
+//  const passEncoder = commandEncoder.beginRenderPass(state.renderPassDescriptor)
+//  passEncoder.setPipeline(state.pipeline)
+//  passEncoder.setVertexBuffer(0, state.vertexBuffer)
+//  passEncoder.setVertexBuffer(1, state.instanceBuffer)
+//  //passEncoder.setBindGroup(0, entity.uniformBindGroup)
+//  passEncoder.draw(state.vertexCount, state.instanceCount, 0, 0)
+//  passEncoder.end()
+//  commandEncoder.copyTextureToBuffer({texture: state.texture}, {buffer: state.exportBuffer, bytesPerRow: state.width*2}, {width: state.width, height: state.height})
+//  gpu.device.queue.submit([commandEncoder.finish()])
+//}

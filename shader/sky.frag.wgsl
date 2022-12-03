@@ -11,7 +11,7 @@ fn main(
 ) -> @location(0) vec4<f32> {
   let x = textureSample(myTexture, mySampler, fragUV).r; // / f32(uniforms.numBaselines);
   let y = abs(x);// / (f32(uniforms.numBaselines)); // / log(f32(uniforms.numBaselines)/log(1.5));
-  let r = (y / (f32(uniforms.numBaselines)/1.0));
+  let r = (y / f32(uniforms.numBaselines));
   //if(x > 0) {
   //  return vec4(x, x, x, 1.0);
   //} else {
