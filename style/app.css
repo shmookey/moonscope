@@ -1,0 +1,32 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: #111;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+canvas {
+  width:  100vw;
+  height: 100vh;
+}
+
+#m1, #m2 {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  left: calc(50vw - 2px);
+  top: calc(50vh - 2px);
+  display: none;
+}
+#m1 {
+  transform: translateX(0);
+  background: rgb(30, 171, 30);
+}
+#m2 {
+  transform: translateX(-120px);
+  background: red;
+}
