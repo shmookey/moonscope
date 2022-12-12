@@ -7,4 +7,10 @@ export type Renderable = {
   uniformBuffer?: GPUBuffer;
   uniformBindGroup?: GPUBindGroup;
   uniformData?: any;
+  outputTexture?: GPUTexture;
 }
+
+export type Vec3 = Float32Array | [number,number, number]
+export type Vec4 = Float32Array
+export type Mat4 = Float32Array
+export type Quat = Float32Array

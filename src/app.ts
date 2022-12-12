@@ -1,5 +1,10 @@
 import * as GPU from './gpu/gpu.js'
-import * as Sky from './gpu/sky.js'
+import * as Sky from './sky.js'
+import * as Skybox from './gpu/skybox.js'
+import * as Render from './gpu/render.js'
+import * as camera from './gpu/camera.js'
+import { createInputController } from './input.js'
+import {vec3, mat4, quat} from "../node_modules/gl-matrix/esm/index.js"
 const { sin, cos, log, sqrt, min, max, random, PI } = Math
 
 const app = {}
@@ -45,13 +50,15 @@ function* layerGen(): Iterator<Sky.LayerData> {
 async function main(): Promise<void> {
   const elems = {
     canvas: initCanvas(),
-    layerCount: document.querySelector('#layer-count'),
+    layerCount: document.querySelector('#layer-count') as HTMLSpanElement,
   }
   const gpu = await GPU.initGPU(elems.canvas)
+
+
   const visSource = layerGen()
   const visState = await Sky.create(
-    1280,
-    1280,
+    1024, // window.visualViewport?.width ?? 1,
+    1024, //window.visualViewport?.height ?? 1,
     20 * 2**20,
     sources.length,
     visSource,
@@ -60,11 +67,21 @@ async function main(): Promise<void> {
   const skyEntity = await Sky.createSkyRenderer(visState.texture, gpu)
   gpu.entities.push(skyEntity)
 
+  const inputState = createInputController(elems.canvas)
+  const sceneState = await Render.createScene(gpu)
+  const renderState = Render.createRenderer(sceneState, gpu)
+
+
   function frame(count: number) {
-    Sky.applyLayers(count, visState, gpu)
-    Sky.updateSkyUniforms(visState.layers, skyEntity, gpu)
-    GPU.frame(gpu)
-    elems.layerCount.innerHTML = visState.layers.toString()
+    if(count > 0) {
+      Sky.applyLayers(count, visState, gpu)
+      Sky.updateSkyUniforms(visState.layers, skyEntity, gpu)
+      Sky.renderSkyToTexture(skyEntity, gpu)
+      Skybox.writeTextures(skyEntity.outputTexture, sceneState.skybox, gpu)
+      elems.layerCount.innerHTML = visState.layers.toString()
+    }
+    //GPU.frame(gpu)
+    Render.renderFrame(sceneState, renderState, gpu)
   }
 
   document.addEventListener('keydown', ev => {
@@ -79,10 +96,45 @@ async function main(): Promise<void> {
       case 'Enter':
         frame(10)
         break
+      case 'ArrowLeft':
+        camera.adjustAltAz(-0.05, 0, sceneState.cameras[0])
+        frame(0)
+        break
+      case 'ArrowRight':
+          camera.adjustAltAz(0.05, 0, sceneState.cameras[0])
+          frame(0)
+          break
+      case 'Period':
+        if(!inputState.captured)
+          elems.canvas.requestPointerLock()
+        break
+      case 'Escape':
+        if(inputState.captured) 
+          document.exitPointerLock()
+        break
+      default:
+        console.log(ev.code)
+        break
     }
-  });
+  })
 
-  (window as any).app = { Sky, GPU, gpu, state: visState }
+  document.addEventListener('pointerlockchange', ev => {
+    if(document.pointerLockElement == elems.canvas) {
+      inputState.captured = true
+    } else {
+      inputState.captured = false
+    }
+  })
+
+  elems.canvas.addEventListener('mousemove', ev => {
+    if(inputState.captured) {
+      camera.adjustAltAz(0.001 * ev.movementY, 0.001 * ev.movementX, sceneState.cameras[0])
+      console.log(sceneState.cameras[0].orientation)
+      frame(0)
+    }
+  })
+  //camera.setAltitude(0.5, sceneState.cameras[0])
+  ;(window as any).app = { Sky, GPU, gpu, scene: sceneState, state: visState, glm: { mat4, vec3, quat } }
   
   frame(1)
   //function frame() {
@@ -94,6 +146,10 @@ async function main(): Promise<void> {
 }
 
 
+function setupInput(): void {
+
+}
+
 
 function initCanvas(): HTMLCanvasElement {
   const elem = document.createElement('canvas')
@@ -104,3 +160,11 @@ function initCanvas(): HTMLCanvasElement {
 }
 
 window.addEventListener('load', main)
+
+
+type Colour = [number, number, number]
+
+function* colourGen(): Generator<Colour> {
+  let [r,g,b] = [0,0,0]
+  yield [r,g,b]
+}

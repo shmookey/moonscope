@@ -9,6 +9,7 @@ export type GPUContext = {
   renderPassDescriptor: GPURenderPassDescriptor;
   entities: Renderable[];
   presentationSize: { width: number; height: number };
+  aspect: number;
 }
 
 export async function initGPU(canvas: HTMLCanvasElement): Promise<GPUContext> {
@@ -44,6 +45,7 @@ export async function initGPU(canvas: HTMLCanvasElement): Promise<GPUContext> {
     modules: {},
     entities: [],
     presentationSize: {width: canvas.width, height: canvas.height},
+    aspect: canvas.width / canvas.height,
   }
 }
 

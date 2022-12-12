@@ -22,6 +22,7 @@
   "dependencies": {
     "@petamoriken/float16": "^3.6.6",
     "@webgpu/types": "^0.1.23",
+    "gl-matrix": "^3.4.3",
     "typescript": "^4.9.3"
   }
 }

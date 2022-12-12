@@ -1,9 +1,9 @@
-import type {GPUContext} from './gpu'
-import type {Renderable} from './types'
-import {loadShader} from './gpu.js'
+import type {GPUContext} from './gpu/gpu'
+import type {Renderable} from './gpu/types'
+import {loadShader} from './gpu/gpu.js'
 import {
   Float16Array
-} from "../../node_modules/@petamoriken/float16/browser/float16.mjs";
+} from "../node_modules/@petamoriken/float16/browser/float16.mjs";
 
 const { asin, sin, cos, log, min, max, random, PI } = Math
 
@@ -311,6 +311,15 @@ export async function createSkyRenderer(visTexture: GPUTexture, gpu: GPUContext)
   const vertexShader = await loadShader('/shader/sky.vert.wgsl', gpu)
   const fragShader = await loadShader('/shader/sky.frag.wgsl', gpu)
 
+  const outputTexture = gpu.device.createTexture({
+    size: [1024, 1024, 1],
+    format: 'rgba8unorm',
+    usage:
+      GPUTextureUsage.TEXTURE_BINDING |
+      GPUTextureUsage.COPY_SRC |
+      GPUTextureUsage.RENDER_ATTACHMENT,
+  })
+
   const uniformBindGroupLayout = gpu.device.createBindGroupLayout({
     entries: [{
       binding: 0, 
@@ -347,7 +356,7 @@ export async function createSkyRenderer(visTexture: GPUTexture, gpu: GPUContext)
       module: fragShader,
       entryPoint: 'main',
       targets: [{
-        format: gpu.presentationFormat,
+        format: 'rgba8unorm',
       }]
     },
     primitive: {
@@ -377,18 +386,30 @@ export async function createSkyRenderer(visTexture: GPUTexture, gpu: GPUContext)
     uniformBindGroup,
     uniformBuffer,
     uniformData,
+    outputTexture,
   }
 }
 
-//export function render(state: any, gpu: GPUContext) {
-//  const commandEncoder = gpu.device.createCommandEncoder()
-//  const passEncoder = commandEncoder.beginRenderPass(state.renderPassDescriptor)
-//  passEncoder.setPipeline(state.pipeline)
-//  passEncoder.setVertexBuffer(0, state.vertexBuffer)
-//  passEncoder.setVertexBuffer(1, state.instanceBuffer)
-//  //passEncoder.setBindGroup(0, entity.uniformBindGroup)
-//  passEncoder.draw(state.vertexCount, state.instanceCount, 0, 0)
-//  passEncoder.end()
-//  commandEncoder.copyTextureToBuffer({texture: state.texture}, {buffer: state.exportBuffer, bytesPerRow: state.width*2}, {width: state.width, height: state.height})
-//  gpu.device.queue.submit([commandEncoder.finish()])
-//}
+export function renderSkyToTexture(state: Renderable, gpu: GPUContext) {
+  const renderPassDescriptor: GPURenderPassDescriptor = {
+    colorAttachments: [{
+      view: state.outputTexture.createView({
+        format: 'rgba8unorm',
+        dimension: '2d',
+        mipLevelCount: 1,
+      }),
+      clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+      loadOp: 'load',
+      storeOp: 'store',
+    }],
+  } as GPURenderPassDescriptor
+
+  const commandEncoder = gpu.device.createCommandEncoder()
+  const passEncoder = commandEncoder.beginRenderPass(renderPassDescriptor)
+  passEncoder.setPipeline(state.pipeline)
+  passEncoder.setVertexBuffer(0, state.vertexBuffer)
+  passEncoder.setBindGroup(0, state.uniformBindGroup)
+  passEncoder.draw(state.vertexCount, 1, 0, 0)
+  passEncoder.end()
+  gpu.device.queue.submit([commandEncoder.finish()])
+}
