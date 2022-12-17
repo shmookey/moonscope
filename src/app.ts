@@ -4,10 +4,19 @@ import * as Skybox from './gpu/skybox.js'
 import * as Render from './gpu/render.js'
 import * as camera from './gpu/camera.js'
 import { createInputController } from './input.js'
-import {vec3, mat4, quat} from "../node_modules/gl-matrix/esm/index.js"
+import { loadResourceBundle } from './gpu/resource.js'
+import { createAtlas } from './gpu/atlas.js'
+import { createInstanceAllocator, registerAllocation, addInstance, updateInstanceData } from './gpu/instance.js'
+import type {RendererState} from './gpu/render'
+import {vec3, mat4, quat} from '../node_modules/gl-matrix/esm/index.js'
+import {INSTANCE_BLOCK_FLOATS} from './gpu/constants.js'
+import {DrawCallDescriptor, InstanceAllocator, Mat4, Vec3, Vec4} from './gpu/types.js'
 const { sin, cos, log, sqrt, min, max, random, PI } = Math
 
-const app = {}
+const app: any = {};
+(window as any).app = app
+const tempMat4_1 = mat4.create()
+const tempMat4_2 = mat4.create()
 
 type SourceSpec = [
   number,  // X
@@ -46,6 +55,87 @@ function* layerGen(): Iterator<Sky.LayerData> {
   }
 }
 
+function setInstanceModelMatrix(
+    modelMatrix: Mat4, 
+    instanceId: number, 
+    instanceAllocator: InstanceAllocator, 
+    device: GPUDevice) {
+  updateInstanceData(modelMatrix, instanceId, device, instanceAllocator, 0)
+}
+
+function setInstanceTextureBounds(
+    textureBounds: Vec4, 
+    instanceId: number, 
+    instanceAllocator: InstanceAllocator, 
+    device: GPUDevice) {
+  updateInstanceData(textureBounds, instanceId, device, instanceAllocator, 4*4*4)
+}
+
+function setInstanceFields(
+    modelMatrix: Mat4,
+    textureBounds: Vec4, 
+    instanceId: number, 
+    instanceAllocator: InstanceAllocator, 
+    device: GPUDevice) {
+  const buf = new Float32Array(4*4 + 4)
+  buf.set(modelMatrix)
+  buf.set(textureBounds, 4*4)
+  updateInstanceData(buf, instanceId, device, instanceAllocator, 4*4*4)
+}
+
+async function setupScene(rendererState: RendererState, device: GPUDevice): Promise<void> {
+  const {bundle, instanceAllocator} = rendererState
+  let drawCall: DrawCallDescriptor = null
+  // Add ground plane
+  const groundMesh = bundle.meshes[1]
+  const groundMeshAllocationId = registerAllocation(1, instanceAllocator)
+  const groundMeshInstanceData = new Float32Array(INSTANCE_BLOCK_FLOATS)
+  mat4.fromTranslation(groundMeshInstanceData, vec3.fromValues(0,-2,0))
+  const groundMeshInstanceId = addInstance(
+    groundMeshAllocationId, 
+    groundMeshInstanceData, 
+    device,
+    instanceAllocator)
+  
+  //const textureBounds = new Float32Array([
+  //  atlas.subTextures
+  drawCall = {
+    id: 0,
+    label: 'ground-draw-call',
+    vertexBuffer:  groundMesh.vertexBuffer,
+    vertexPointer: groundMesh.vertexPointer,
+    vertexCount:   groundMesh.vertexCount,
+    instanceBuffer: instanceAllocator.instanceBuffer,
+    instancePointer: instanceAllocator.allocations[groundMeshAllocationId].instanceIndex * 4,
+    instanceCount: 1,
+    bindGroup: rendererState.mainBindGroup
+  }
+  rendererState.drawCalls.push(drawCall)
+
+  // Add cube
+  const cubeMesh = bundle.meshes[0]
+  const cubeMeshAllocationId = registerAllocation(200, instanceAllocator)
+  const cubeMeshInstanceData = new Float32Array(INSTANCE_BLOCK_FLOATS)
+  mat4.fromTranslation(cubeMeshInstanceData, vec3.fromValues(0,1,-5))
+  const cubeMeshInstanceId = addInstance(
+    cubeMeshAllocationId, 
+    cubeMeshInstanceData, 
+    device,
+    instanceAllocator)
+  drawCall = {
+    id: 1,
+    label: 'test-cube',
+    vertexBuffer: cubeMesh.vertexBuffer,
+    vertexPointer: cubeMesh.vertexPointer,
+    vertexCount: cubeMesh.vertexCount,
+    instanceBuffer: instanceAllocator.instanceBuffer,
+    instancePointer: instanceAllocator.allocations[cubeMeshAllocationId].instanceIndex * 4,
+    instanceCount: 1,
+    bindGroup: rendererState.mainBindGroup
+  }
+  rendererState.drawCalls.push(drawCall)
+}
+
 
 async function main(): Promise<void> {
   const elems = {
@@ -53,8 +143,8 @@ async function main(): Promise<void> {
     layerCount: document.querySelector('#layer-count') as HTMLSpanElement,
   }
   const gpu = await GPU.initGPU(elems.canvas)
-
-
+  
+  //const testShader = await GPU.loadShader('/shader/entity.frag.wgsl', gpu)
   const visSource = layerGen()
   const visState = await Sky.create(
     1024, // window.visualViewport?.width ?? 1,
@@ -68,8 +158,11 @@ async function main(): Promise<void> {
   gpu.entities.push(skyEntity)
 
   const inputState = createInputController(elems.canvas)
-  const sceneState = await Render.createScene(gpu)
-  const renderState = Render.createRenderer(sceneState, gpu)
+  
+  const renderState = await Render.createRenderer(gpu.presentationFormat, gpu)
+  app.renderState = renderState
+  const sceneState = await Render.createScene(renderState.mainUniformBuffer, gpu)
+  await setupScene(renderState, gpu.device)
 
 
   function frame(count: number) {
@@ -113,7 +206,7 @@ async function main(): Promise<void> {
           document.exitPointerLock()
         break
       default:
-        console.log(ev.code)
+        //console.log(ev.code)
         break
     }
   })
@@ -129,12 +222,17 @@ async function main(): Promise<void> {
   elems.canvas.addEventListener('mousemove', ev => {
     if(inputState.captured) {
       camera.adjustAltAz(0.001 * ev.movementY, 0.001 * ev.movementX, sceneState.cameras[0])
-      console.log(sceneState.cameras[0].orientation)
+      //console.log(sceneState.cameras[0].orientation)
       frame(0)
     }
   })
   //camera.setAltitude(0.5, sceneState.cameras[0])
-  ;(window as any).app = { Sky, GPU, gpu, scene: sceneState, state: visState, glm: { mat4, vec3, quat } }
+  app.Sky = Sky
+  app.GPU = GPU
+  app.gpu = gpu
+  app.scene = sceneState
+  app.visState = visState
+  app.glm = { mat4, vec3, quat }
   
   frame(1)
   //function frame() {

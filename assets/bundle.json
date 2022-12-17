@@ -1,0 +1,32 @@
+{
+  "textures": [
+    {
+      "label": "default texture",
+      "id":    0,
+      "size":  [ 512, 512 ],
+      "src":   "/assets/texture/default.png"
+    },
+    {
+      "label": "grid-square",
+      "id":    1,
+      "size":  [ 512, 512 ],
+      "src":   "/assets/texture/grid-square.png"
+    }
+  ],
+  "meshes": [
+    {
+      "label":       "cube",
+      "id":          0,
+      "vertexCount": 36,
+      "src":         "/assets/mesh/cube.json",
+      "srcType":     "json"
+    },
+    {
+      "label":       "ground",
+      "id":          1,
+      "vertexCount": 6,
+      "src":         "/assets/mesh/ground.json",
+      "srcType":     "json"
+    }
+  ]
+}

@@ -31,12 +31,6 @@ export function viewMatrix(out: Mat4, camera: Camera): void {
   mat4.fromQuat(out, camera.orientation) 
 }
 
-/** Multiply a vector by a quaternion. */
-function quatMulVec3(out: Vec3, q: Quat, v: Vec3): void {
-  quat.multiply(out, q, v)
-  quat.multiply(out, out, quat.conjugate(tempQ_1, q))
-}
-
 /** Adjust the altitude of the camera by the given amount.
  * Does not affect its position or azimuth.
  */
