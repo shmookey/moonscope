@@ -1,12 +1,19 @@
 /** atlas.ts -- Texture atlas for WebGPU. */
 
-import type {Atlas, SubTexture} from "./types"
+import type {Atlas, Region, SubTexture} from "./types"
+const { max } = Math
 
 const MIN_LAYER_SIZE = 256; // Minimum size of each layer in atlas
 
 
 /** Create a new texture atlas. */
-export function createAtlas(device: GPUDevice, layerSize: [number, number], layerCount: number, format: GPUTextureFormat): Atlas {
+export function createAtlas(
+    device: GPUDevice,
+    layerSize: [number, number], 
+    layerCount: number, 
+    format: GPUTextureFormat,
+    mipLevels: number): Atlas {
+
   // Ensure layer size is square and a power of 2
   if(layerSize[0] & (layerSize[0] - 1) || layerSize[1] & (layerSize[1] - 1) || layerSize[0] !== layerSize[1]) {
     throw new Error('Layers must be square and of power-of-2 size.')
@@ -22,20 +29,39 @@ export function createAtlas(device: GPUDevice, layerSize: [number, number], laye
   const texture = device.createTexture({
     size: [layerSize[0], layerSize[1], layerCount],
     format,
-    usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+    usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+    mipLevelCount: mipLevels,
   })
-  return { texture, layerSize, layerCount, format, subTextures: [] }
+
+  return {
+    texture, 
+    layerSize, 
+    layerCount, 
+    format, 
+    mipLevels,
+    subTextures: [],
+  }
 }
 
 /** Add a sub-texture to an atlas. */
 export function addSubTexture(atlas: Atlas, width: number, height: number, label: string): SubTexture {
-  const destination = findSpaceInAtlas(atlas, width, height)
+  const destination = findSpaceInAtlas(atlas, width*2, height*2)
   if(!destination) {
     throw new Error('No space in atlas for sub-texture')
   }
   const id = atlas.subTextures.length
   const [ x, y, layer ] = destination
-  atlas.subTextures.push({ id, label, x, y, width, height, layer })
+  const region: Region = [x, y, width*2, height*2]
+  atlas.subTextures.push({
+    id, 
+    label, 
+    x: x + width/2, 
+    y: y + height/2, 
+    width, 
+    height, 
+    layer, 
+    region
+  })
   return atlas.subTextures[id]
 }
 
@@ -91,6 +117,120 @@ export function copyImageBitmapToSubTexture(
   device.queue.copyExternalImageToTexture(imageBitmapCopyView, textureCopyView, copySize)
 }
 
+/** Copy an HTMLImageElement into a sub-texture. */
+export async function copyImageToSubTexture(
+    element: HTMLImageElement,
+    subTextureID: number,
+    atlas: Atlas,
+    device: GPUDevice): Promise<void> {
+  
+  if(!(subTextureID in atlas.subTextures)) {
+    throw new Error('Invalid sub-texture ID')
+  }
+  const subTexture = atlas.subTextures[subTextureID]
+  await element.decode()
+  for(let mipLevel=0; mipLevel<atlas.mipLevels; mipLevel++) {
+    const width = max(1, subTexture.width >> mipLevel)
+    const height = max(1, subTexture.height >> mipLevel)
+    element.width = width
+    element.height = height
+    await element.decode()
+    const x = subTexture.x >> mipLevel
+    const y = subTexture.y >> mipLevel
+    const image = await createImageBitmap(element, {
+      resizeWidth: width,
+      resizeHeight: height,
+      resizeQuality: 'high',
+    })
+    const imageCopy: GPUImageCopyExternalImage = {
+      source: image,
+      origin: [0,0],
+      flipY: true,
+    }
+    // main image
+    device.queue.copyExternalImageToTexture({
+      source: image,
+      origin: [0, 0],
+      flipY: true,
+    }, {
+      texture: atlas.texture,
+      mipLevel,
+      origin: [subTexture.x >> mipLevel, subTexture.y >> mipLevel, subTexture.layer],
+    }, {
+      width: max(1, subTexture.width >> mipLevel),
+      height: max(1, subTexture.height >> mipLevel),
+    })
+    // left border
+    device.queue.copyExternalImageToTexture({
+      source: image,
+      origin: [width/2, 0],
+      flipY: true,
+    }, {
+      texture: atlas.texture,
+      mipLevel,
+      origin: [
+        subTexture.region[0] >> mipLevel, 
+        y, 
+        subTexture.layer
+      ],
+    }, {
+      width: max(1, width/2),
+      height: max(1, height),
+    })
+    // right border
+    device.queue.copyExternalImageToTexture({
+      source: image,
+      origin: [0, 0],
+      flipY: true,
+    }, {
+      texture: atlas.texture,
+      mipLevel,
+      origin: [
+        x + width, 
+        y, 
+        subTexture.layer
+      ],
+    }, {
+      width: max(1, width/2),
+      height: max(1, height),
+    })
+    // top border
+    device.queue.copyExternalImageToTexture({
+      source: image,
+      origin: [0, height/2],
+      flipY: true,
+    }, {
+      texture: atlas.texture,
+      mipLevel,
+      origin: [
+        x,
+        subTexture.region[1] >> mipLevel, 
+        subTexture.layer
+      ],
+    }, {
+      width: max(1, width),
+      height: max(1, height/2),
+    })
+    // bottom border
+    device.queue.copyExternalImageToTexture({
+      source: image,
+      origin: [0, 0],
+      flipY: true,
+    }, {
+      texture: atlas.texture,
+      mipLevel,
+      origin: [
+        x,
+        y + height,  
+        subTexture.layer
+      ],
+    }, {
+      width: max(1, width),
+      height: max(1, height/2),
+    })
+  }
+}
+
 
 /** Determine if two rectangles overlap. */
 function intersects(x1: number, y1: number, w1: number, h1: number, x2: number, y2: number, w2: number, h2: number): boolean {
@@ -126,11 +266,11 @@ export function findSpaceInLayer(atlas: Atlas, width: number, height: number, la
   if(width > layerWidth || height > layerHeight) {
     return null
   }
-  for(let y=0; y<layerHeight; y += 256) {
-    for(let x=0; x<layerWidth; x += 256) {
+  for(let y=0; y<layerHeight; y = max(y << 1, 256)) {
+    for(let x=0; x<layerWidth; x = max(x << 1, 256)) {
       const occupied = layerSubTextures.find(st => 
-        (st.x === x && st.y === y) ||
-        intersects(x, y, width, height, st.x, st.y, st.width, st.height)
+        (st.region[0] === x && st.region[1] === y) ||
+        intersects(x, y, width, height, ...st.region)
       )
       if(!occupied) {
         return [x, y]
@@ -138,4 +278,38 @@ export function findSpaceInLayer(atlas: Atlas, width: number, height: number, la
     }
   }
   return null
+}
+
+/** Create an ImageBitmap from an atlas layer. */
+export async function getLayerAsImageBitmap(
+    layer: number, 
+    mipLevel: number,
+    atlas: Atlas, 
+    device: GPUDevice): Promise<ImageBitmap> {
+  const width = atlas.layerSize[0] >> mipLevel
+  const height = atlas.layerSize[1] >> mipLevel
+  const exportBuffer = device.createBuffer({
+    size: width * height * 4,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  })
+  const commandEncoder = device.createCommandEncoder()
+  commandEncoder.copyTextureToBuffer({
+    texture: atlas.texture,
+    origin: [0, 0, layer],
+    mipLevel,
+  }, {
+    buffer: exportBuffer, 
+    bytesPerRow: width*4
+  }, {
+    width, 
+    height,
+    depthOrArrayLayers: 1,
+  })
+  device.queue.submit([commandEncoder.finish()])
+  await exportBuffer.mapAsync(GPUMapMode.READ)
+  const arrayBuffer = exportBuffer.getMappedRange()
+  const imageData = new ImageData(new Uint8ClampedArray(arrayBuffer), width, height)
+  const imageBitmap = await createImageBitmap(imageData)
+  exportBuffer.unmap()
+  return imageBitmap
 }

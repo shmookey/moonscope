@@ -7,25 +7,61 @@
       "src":   "/assets/texture/default.png"
     },
     {
-      "label": "grid-square",
-      "id":    1,
-      "size":  [ 512, 512 ],
-      "src":   "/assets/texture/grid-square.png"
+      "label":   "grid-square",
+      "id":      1,
+      "size":    [ 512, 512 ],
+      "src":     "/assets/texture/grid.svg",
+      "srcType": "svg"
+    },
+    {
+      "label":   "white-square",
+      "id":      2,
+      "size":    [ 512, 512 ],
+      "src":     "/assets/texture/white.png"
+    },
+    {
+      "label":   "default-triangle",
+      "id":      3,
+      "size":    [ 512, 512 ],
+      "src":     "/assets/texture/default-triangle.png"
     }
   ],
   "meshes": [
     {
-      "label":       "cube",
-      "id":          0,
+      "name":        "cube",
       "vertexCount": 36,
       "src":         "/assets/mesh/cube.json",
       "srcType":     "json"
     },
     {
-      "label":       "ground",
-      "id":          1,
+      "name":        "ground",
       "vertexCount": 6,
       "src":         "/assets/mesh/ground.json",
+      "srcType":     "json"
+    },{
+      "name":        "tetrahedron",
+      "vertexCount": 12,
+      "src":         "/assets/mesh/tetrahedron.json",
+      "srcType":     "json"
+    },{
+      "name":        "icosahedron",
+      "vertexCount": 60,
+      "src":         "/assets/mesh/icosahedron.json",
+      "srcType":     "json"
+    },{
+      "name":        "icosphere-1",
+      "vertexCount": 240,
+      "src":         "/assets/mesh/icosphere-1.json",
+      "srcType":     "json"
+    },{
+      "name":        "icosphere-2",
+      "vertexCount": 960,
+      "src":         "/assets/mesh/icosphere-2.json",
+      "srcType":     "json"
+    },{
+      "name":        "icosphere-3",
+      "vertexCount": 3840,
+      "src":         "/assets/mesh/icosphere-3.json",
       "srcType":     "json"
     }
   ]

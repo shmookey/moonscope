@@ -2,9 +2,10 @@ struct VertexOutput {
   @builtin(position)              Position:     vec4<f32>,
   @location(0)                    uv:           vec2<f32>,
   @location(1)                    normal:       vec3<f32>,
-  @location(2) @interpolate(flat) textureLayer: i32,
-  @location(3) @interpolate(flat) instanceSlot: u32,
-  @location(4) @interpolate(flat) textureBounds: vec4<f32>,
+  @location(2)                    worldPos:     vec3<f32>,
+  @location(3) @interpolate(flat) textureLayer: i32,
+  @location(4) @interpolate(flat) instanceSlot: u32,
+  @location(5) @interpolate(flat) textureBounds: vec4<f32>,
 }
 
 struct Uniforms {
@@ -39,6 +40,7 @@ fn main(
                   * uniforms.view
                   * model
                   * position;
+  output.worldPos = (model * position).xyz;
   output.uv = uv;
   output.normal = normal;
   output.textureLayer = i32(textureLayer);

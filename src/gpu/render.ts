@@ -1,23 +1,24 @@
 //import {vec3} from "gl-matrix"
 import type {GPUContext} from './gpu'
-import type {Camera} from './camera'
-import type {Atlas, DrawCallDescriptor, Entity, InstanceAllocator, Mat4, Renderable, ResourceBundle} from './types'
+import type {Atlas, Camera, FirstPersonCamera, DrawCallDescriptor, Entity, InstanceAllocator, Mat4, Renderable, ResourceBundle, MeshStore, Model} from './types'
 import type {SkyboxState} from './skybox.js'
-import * as camera from './camera.js'
 import * as Skybox from './skybox.js'
 import * as SceneMgr from './scene.js'
 import {loadShader} from './gpu.js'
 import {mat4} from '../../node_modules/gl-matrix/esm/index.js'
 import {createAtlas} from './atlas.js'
+import {createCamera, createFirstPersonCamera, getCameraViewMatrix} from './camera.js'
 import {loadResourceBundle} from './resource.js'
-import {createInstanceAllocator} from './instance.js'
-import {INSTANCE_INDEX_SIZE, UNIFORM_BUFFER_FLOATS, VERTEX_SIZE} from './constants.js'
+import {addInstance, createInstanceAllocator, registerAllocation} from './instance.js'
+import {INSTANCE_BLOCK_SIZE, INSTANCE_INDEX_SIZE, UNIFORM_BUFFER_FLOATS, VERTEX_SIZE} from './constants.js'
+import {createMeshStore, getMeshByName} from './mesh.js'
 
 
 export type Scene = {
   skybox: SkyboxState,
   entities: Entity[],
   cameras: Camera[],
+  firstPersonCamera: FirstPersonCamera,
 }
 
 export type RendererState = {
@@ -28,25 +29,33 @@ export type RendererState = {
   mainUniformBuffer: GPUBuffer,
   mainSampler: GPUSampler,
   mainPipeline: GPURenderPipeline,
+  pipelineLayout: GPUPipelineLayout,
   atlas: Atlas,
   bundle: ResourceBundle,
   instanceAllocator: InstanceAllocator,
+  meshStore: MeshStore,
   drawCalls: DrawCallDescriptor[],
+  models: Model[],
+  nextModelId: number,
+  nextDrawCallId: number,
 }
 
 const UNIFORM_BUFFER_LENGTH = 2 * 4*4*4
+const tempInstanceData = new Float32Array(INSTANCE_BLOCK_SIZE/4)
 
 export async function createScene(
     uniformBuffer: GPUBuffer,
     gpu: GPUContext): Promise<Scene> {
 
   const skybox = await Skybox.create(uniformBuffer, gpu)
-  const defaultCamera = camera.create(gpu.aspect)
+  const defaultCamera = createCamera(gpu.aspect)
+  const firstPersonCamera = createFirstPersonCamera()
 
   return {
     cameras: [defaultCamera],
     entities: [],
-    skybox
+    skybox,
+    firstPersonCamera,
   }
 }
 
@@ -56,9 +65,10 @@ export async function createRenderer(
 
   const uniformData = new Float32Array(UNIFORM_BUFFER_FLOATS)
   const viewMatrix = mat4.create()
-  const atlas = createAtlas(gpu.device, [4096, 4096], 1, 'rgba8unorm')
-  const bundle = await loadResourceBundle('/assets/bundle.json', atlas, gpu.device)
-  const instanceAllocator = createInstanceAllocator(gpu.device, 1000)
+  const atlas = createAtlas(gpu.device, [4096, 4096], 1, 'rgba8unorm', 6)
+  const meshStore = createMeshStore(10000, VERTEX_SIZE, gpu.device)
+  const bundle = await loadResourceBundle('/assets/bundle.json', atlas, meshStore, gpu.device)
+  const instanceAllocator = createInstanceAllocator(gpu.device, 5000)
   const mainBindGroupLayout = SceneMgr.createMainBindGroupLayout(gpu.device)
   const mainSampler = SceneMgr.createMainSampler(gpu.device)
   const mainUniformBuffer = SceneMgr.createMainUniformBuffer(gpu.device)
@@ -69,11 +79,13 @@ export async function createRenderer(
     atlas,
     mainSampler,
     gpu.device)
-  const mainPipeline = await SceneMgr.createMainPipeline(
+  const pipelineLayout = SceneMgr.createMainPipelineLayout(
     mainBindGroupLayout,
+    gpu.device)
+  const mainPipeline = await SceneMgr.createMainPipeline(
+    pipelineLayout,
     presentationFormat,
     gpu.device)
-  const drawCalls: DrawCallDescriptor[] = []
 
   return {
     uniformData,
@@ -83,11 +95,77 @@ export async function createRenderer(
     mainUniformBuffer,
     mainSampler,
     mainPipeline,
+    pipelineLayout,
     atlas,
     bundle,
     instanceAllocator,
-    drawCalls,
+    meshStore,
+    drawCalls: [],
+    models: [],
+    nextModelId: 0,
+    nextDrawCallId: 0,
   }
+}
+
+/** Register a model with the renderer.
+ * 
+ * Returns the model id.
+ */
+export function registerModel(
+    name: string,
+    meshName: string,
+    maxInstances: number,
+    state: RendererState): number {
+  const id = state.nextModelId
+  const allocationId = registerAllocation(maxInstances, state.instanceAllocator)
+  const mesh = getMeshByName(meshName, state.meshStore)
+  const drawCallId = state.nextDrawCallId
+  const model = { 
+    id, 
+    name, 
+    meshId: mesh.id, 
+    allocationId,
+    drawCallId,
+  }
+  const drawCall: DrawCallDescriptor = {
+    id:              drawCallId,
+    label:           `DrawCall#${drawCallId}=${name}`,
+    vertexBuffer:    state.meshStore.vertexBuffer,
+    vertexPointer:   mesh.vertexPointer,
+    vertexCount:     mesh.vertexCount,
+    instanceBuffer:  state.instanceAllocator.instanceBuffer,
+    instancePointer: state.instanceAllocator.allocations[allocationId].instanceIndex * 4,
+    instanceCount:   0,
+    bindGroup:       state.mainBindGroup,
+  }
+
+  state.nextModelId++
+  state.nextDrawCallId++
+  state.models.push(model)
+  state.drawCalls.push(drawCall)
+  return id
+}
+
+/** Create an instance of a model.
+ * 
+ * Returns the instance ID.
+ */
+export function createInstance(
+    modelMatrix: Mat4,
+    modelId: number,
+    state: RendererState,
+    device: GPUDevice): number {
+  const model = state.models[modelId]
+  tempInstanceData.set(modelMatrix)
+  const instanceId = addInstance(
+    model.allocationId, 
+    tempInstanceData, 
+    device, 
+    state.instanceAllocator
+  )
+  const drawCall = state.drawCalls[model.drawCallId]
+  drawCall.instanceCount = state.instanceAllocator.allocations[model.allocationId].numInstances
+  return instanceId
 }
 
 /** Render the scene from the view of a given camera. */
@@ -99,7 +177,7 @@ export function renderView(
     gpu: GPUContext) {
 
   // Todo: only update if camera is dirty
-  camera.viewMatrix(state.viewMatrix, cam)
+  getCameraViewMatrix(state.viewMatrix, cam)
   state.uniformData.set(state.viewMatrix, 0)
   state.uniformData.set(cam.projection, 16)
   gpu.device.queue.writeBuffer(state.mainUniformBuffer, 0, state.uniformData)

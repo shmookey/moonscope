@@ -1,34 +1,42 @@
 import {vec3, mat4, quat} from "../../node_modules/gl-matrix/esm/index.js"
-import type {Mat4, Quat, Vec3} from './types'
+import type {Camera, FirstPersonCamera, Mat4, Quat, Vec3} from './types'
 const {sin, cos, min, max, PI} = Math
 
 const tempQ_1 = mat4.create()
 const tempQ_2 = mat4.create()
 
-/** Camera type.
+/** Create a new camera with the given aspect ratio. 
  * 
- * Changes mark the camera as "dirty" so that the renderer knows to propagate
- * it to whatever buffers need a copy.
+ * Starts at the origin pointing in the positive z direction.
  */
-export type Camera = {
-  projection: Mat4,
-  isDirty: boolean, 
-  position: Vec3,
-  orientation: Quat,
-}
-
-export function create(aspect: number): Camera {
+export function createCamera(aspect: number): Camera {
   const position = vec3.create()
   const orientation = quat.create()
   const projection = mat4.create()
-  mat4.perspectiveZO(projection, PI/2, aspect, 0.1, 100)
+  mat4.perspectiveZO(projection, PI/2, aspect, 0.1, Infinity)
   console.log(orientation)
   return {isDirty: true, projection, position,
       orientation}
 }
 
-export function viewMatrix(out: Mat4, camera: Camera): void {
-  mat4.fromQuat(out, camera.orientation) 
+/** Create a new first-person camera.
+ * 
+ * Starts at the origin pointing in the positive z direction.
+ */
+export function createFirstPersonCamera(): FirstPersonCamera {
+  const position = vec3.create()
+  return {
+    position,
+    roll: 0,
+    pitch: 0,
+    yaw: 0,
+  }
+}
+
+
+export function getCameraViewMatrix(out: Mat4, camera: Camera): void {
+  mat4.fromQuat(out, camera.orientation)
+  mat4.translate(out, out, camera.position)
 }
 
 /** Adjust the altitude of the camera by the given amount.
@@ -55,4 +63,42 @@ export function adjustAzimuth(az: number, camera: Camera): void {
 export function adjustAltAz(alt: number, az: number, camera: Camera): void {
   adjustAltitude(alt, camera)
   adjustAzimuth(az, camera)
+}
+
+/** Apply a FirstPersonCamera to a Camera. */
+export function applyFirstPersonCamera(fpCamera: FirstPersonCamera, camera: Camera): void {
+  const {position, roll, pitch, yaw} = fpCamera
+  const q = camera.orientation
+  quat.identity(q)
+  quat.rotateX(q, q, pitch)
+  quat.rotateY(q, q, yaw)
+  quat.rotateZ(q, q, roll)
+  vec3.copy(camera.position, position)
+  camera.isDirty = true
+}
+
+/** Rotate a first person camera by a given pitch and yaw. */
+export function rotateFirstPersonCamera(pitch: number, yaw: number, fpCamera: FirstPersonCamera): void {
+  fpCamera.pitch += pitch
+  fpCamera.yaw += yaw
+  fpCamera.pitch = max(-PI/2, min(PI/2, fpCamera.pitch))
+}
+
+/** Move a first person camera in the forward/backwards direction. */
+export function moveFirstPersonCameraForward(dist: number, fpCamera: FirstPersonCamera): void {
+  const {position, yaw} = fpCamera
+  const dx = dist * sin(yaw)
+  const dz = dist * cos(yaw)
+  position[0] -= dx
+  //position[1] += dy
+  position[2] += dz
+}
+
+/** Move a first person camera in the left/right direction. */
+export function moveFirstPersonCameraRight(dist: number, fpCamera: FirstPersonCamera): void {
+  const {position, yaw} = fpCamera
+  const dx = dist * cos(yaw)
+  const dz = dist * sin(yaw)
+  position[0] += dx
+  position[2] += dz
 }

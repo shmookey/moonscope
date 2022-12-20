@@ -2,15 +2,17 @@ import * as GPU from './gpu/gpu.js'
 import * as Sky from './sky.js'
 import * as Skybox from './gpu/skybox.js'
 import * as Render from './gpu/render.js'
-import * as camera from './gpu/camera.js'
-import { createInputController } from './input.js'
+import { createInputState } from './input.js'
 import { loadResourceBundle } from './gpu/resource.js'
-import { createAtlas } from './gpu/atlas.js'
+import { createAtlas, getLayerAsImageBitmap } from './gpu/atlas.js'
 import { createInstanceAllocator, registerAllocation, addInstance, updateInstanceData } from './gpu/instance.js'
-import type {RendererState} from './gpu/render'
+import {createInstance, registerModel, RendererState} from './gpu/render.js'
 import {vec3, mat4, quat} from '../node_modules/gl-matrix/esm/index.js'
 import {INSTANCE_BLOCK_FLOATS} from './gpu/constants.js'
-import {DrawCallDescriptor, InstanceAllocator, Mat4, Vec3, Vec4} from './gpu/types.js'
+import {DrawCallDescriptor, InstanceAllocator, Mat4, ResourceBundle, Vec3, Vec4} from './gpu/types.js'
+import {applyFirstPersonCamera, moveFirstPersonCameraForward, moveFirstPersonCameraRight, rotateFirstPersonCamera} from './gpu/camera.js'
+import {celestialBodyModelMatrix, generateUniverse, localBodyModelMatrix, Universe, updateUniverse} from './universe.js'
+import {getMeshByName} from './gpu/mesh.js'
 const { sin, cos, log, sqrt, min, max, random, PI } = Math
 
 const app: any = {};
@@ -83,59 +85,58 @@ function setInstanceFields(
   updateInstanceData(buf, instanceId, device, instanceAllocator, 4*4*4)
 }
 
-async function setupScene(rendererState: RendererState, device: GPUDevice): Promise<void> {
-  const {bundle, instanceAllocator} = rendererState
-  let drawCall: DrawCallDescriptor = null
+function setupScene(rendererState: RendererState, device: GPUDevice): void {
   // Add ground plane
-  const groundMesh = bundle.meshes[1]
-  const groundMeshAllocationId = registerAllocation(1, instanceAllocator)
-  const groundMeshInstanceData = new Float32Array(INSTANCE_BLOCK_FLOATS)
-  mat4.fromTranslation(groundMeshInstanceData, vec3.fromValues(0,-2,0))
-  const groundMeshInstanceId = addInstance(
-    groundMeshAllocationId, 
-    groundMeshInstanceData, 
-    device,
-    instanceAllocator)
-  
-  //const textureBounds = new Float32Array([
-  //  atlas.subTextures
-  drawCall = {
-    id: 0,
-    label: 'ground-draw-call',
-    vertexBuffer:  groundMesh.vertexBuffer,
-    vertexPointer: groundMesh.vertexPointer,
-    vertexCount:   groundMesh.vertexCount,
-    instanceBuffer: instanceAllocator.instanceBuffer,
-    instancePointer: instanceAllocator.allocations[groundMeshAllocationId].instanceIndex * 4,
-    instanceCount: 1,
-    bindGroup: rendererState.mainBindGroup
-  }
-  rendererState.drawCalls.push(drawCall)
+  const groundModelId = registerModel('ground', 'ground', 1, rendererState)
+  mat4.fromTranslation(tempMat4_1, vec3.fromValues(0,-2,0))
+  const groundInstanceId = createInstance(tempMat4_1, groundModelId, rendererState, device)
 
   // Add cube
-  const cubeMesh = bundle.meshes[0]
-  const cubeMeshAllocationId = registerAllocation(200, instanceAllocator)
-  const cubeMeshInstanceData = new Float32Array(INSTANCE_BLOCK_FLOATS)
-  mat4.fromTranslation(cubeMeshInstanceData, vec3.fromValues(0,1,-5))
-  const cubeMeshInstanceId = addInstance(
-    cubeMeshAllocationId, 
-    cubeMeshInstanceData, 
-    device,
-    instanceAllocator)
-  drawCall = {
-    id: 1,
-    label: 'test-cube',
-    vertexBuffer: cubeMesh.vertexBuffer,
-    vertexPointer: cubeMesh.vertexPointer,
-    vertexCount: cubeMesh.vertexCount,
-    instanceBuffer: instanceAllocator.instanceBuffer,
-    instancePointer: instanceAllocator.allocations[cubeMeshAllocationId].instanceIndex * 4,
-    instanceCount: 1,
-    bindGroup: rendererState.mainBindGroup
-  }
-  rendererState.drawCalls.push(drawCall)
+  const cubeModelId = registerModel('test-object', 'icosphere-3', 1, rendererState)
+  mat4.fromTranslation(tempMat4_1, vec3.fromValues(-1,1.5,-3))
+  const cubeInstanceId = createInstance(tempMat4_1, cubeModelId, rendererState, device)
 }
 
+
+function setupUniverse(
+    rendererState:   RendererState,
+    device: GPUDevice): void {
+  const universe = generateUniverse(1000)
+  app.universe = universe
+
+  // Set up draw call for celestial bodies
+  const starModelId = registerModel('celestial-body', 'icosahedron', 1000, rendererState)
+  for(let body of universe.celestialBodies) {
+    celestialBodyModelMatrix(body, tempMat4_1)
+    body.instanceId = createInstance(tempMat4_1, starModelId, rendererState, device)
+  }
+
+  // Set up draw call for local bodies
+  const planetModelId = registerModel('local-body', 'icosphere-2', 100, rendererState)
+  const planetModel = rendererState.models[planetModelId]
+  universe.localBodiesAllocId = planetModel.allocationId
+  for(let body of universe.localBodies) {
+    localBodyModelMatrix(body, tempMat4_1)
+    body.instanceId = createInstance(tempMat4_1, planetModelId, rendererState, device)
+  }
+
+}
+
+function updateLocalBodyInstanceData(universe: Universe, instanceAllocator: InstanceAllocator, device: GPUDevice) {
+  const allocationId = universe.localBodiesAllocId
+  const allocationOffset = instanceAllocator.allocations[allocationId].instanceIndex
+  const instanceData = new Float32Array(INSTANCE_BLOCK_FLOATS)
+  const modelMatrix = mat4.create()
+  for(let body of universe.localBodies) {
+    localBodyModelMatrix(body, modelMatrix)
+    instanceData.set(modelMatrix)
+    updateInstanceData(
+      instanceData, 
+      body.instanceId,
+      device,
+      instanceAllocator)
+  }
+}
 
 async function main(): Promise<void> {
   const elems = {
@@ -157,13 +158,14 @@ async function main(): Promise<void> {
   const skyEntity = await Sky.createSkyRenderer(visState.texture, gpu)
   gpu.entities.push(skyEntity)
 
-  const inputState = createInputController(elems.canvas)
+  const inputState = createInputState()
   
   const renderState = await Render.createRenderer(gpu.presentationFormat, gpu)
   app.renderState = renderState
   const sceneState = await Render.createScene(renderState.mainUniformBuffer, gpu)
-  await setupScene(renderState, gpu.device)
-
+  
+  setupUniverse(renderState, gpu.device)
+  setupScene(renderState, gpu.device)
 
   function frame(count: number) {
     if(count > 0) {
@@ -177,7 +179,7 @@ async function main(): Promise<void> {
     Render.renderFrame(sceneState, renderState, gpu)
   }
 
-  document.addEventListener('keydown', ev => {
+  document.addEventListener('keydown', async ev => {
     //console.log(ev.code)
     switch(ev.code) {
       case 'KeyI':
@@ -189,44 +191,53 @@ async function main(): Promise<void> {
       case 'Enter':
         frame(10)
         break
-      case 'ArrowLeft':
-        camera.adjustAltAz(-0.05, 0, sceneState.cameras[0])
-        frame(0)
-        break
-      case 'ArrowRight':
-          camera.adjustAltAz(0.05, 0, sceneState.cameras[0])
-          frame(0)
-          break
       case 'Period':
-        if(!inputState.captured)
+        if(!inputState.mouseCaptured)
           elems.canvas.requestPointerLock()
         break
       case 'Escape':
-        if(inputState.captured) 
+        if(inputState.mouseCaptured) 
           document.exitPointerLock()
         break
+      case 'Backspace':
+        getAtlasAsImage()
+        break
       default:
-        //console.log(ev.code)
+        console.log(ev.code)
         break
     }
   })
+
+  async function getAtlasAsImage() {
+    const imageBitmap = await getLayerAsImageBitmap(0, 3, renderState.atlas, gpu.device)
+    const canvas = document.createElement('canvas')
+    canvas.width = imageBitmap.width
+    canvas.height = imageBitmap.height
+    canvas.style.width  = `${imageBitmap.width}px`
+    canvas.style.height = `${imageBitmap.height}px`
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(imageBitmap, 0, 0)
+    const container = document.createElement('div')
+    container.style.width  = `${imageBitmap.width}px`
+    container.style.height = `${imageBitmap.height}px`
+    container.style.position = 'absolute'
+    container.style.top  = '0px' // `calc(50% - ${(imageBitmap.height + 10)/2}px)`
+    container.style.left = '0px' //`calc(50% - ${(imageBitmap.width + 10)/2}px)`
+    container.style.backgroundColor = '#000'
+    container.append(canvas)
+    document.body.append(container)
+  }
 
   document.addEventListener('pointerlockchange', ev => {
     if(document.pointerLockElement == elems.canvas) {
-      inputState.captured = true
+      inputState.mouseCaptured = true
+      requestAnimationFrame(renderFrame)
     } else {
-      inputState.captured = false
+      inputState.mouseCaptured = false
     }
   })
 
-  elems.canvas.addEventListener('mousemove', ev => {
-    if(inputState.captured) {
-      camera.adjustAltAz(0.001 * ev.movementY, 0.001 * ev.movementX, sceneState.cameras[0])
-      //console.log(sceneState.cameras[0].orientation)
-      frame(0)
-    }
-  })
-  //camera.setAltitude(0.5, sceneState.cameras[0])
+  
   app.Sky = Sky
   app.GPU = GPU
   app.gpu = gpu
@@ -234,13 +245,60 @@ async function main(): Promise<void> {
   app.visState = visState
   app.glm = { mat4, vec3, quat }
   
-  frame(1)
+  frame(500)
+  const movementSpeed = 0.004
+  let lastTime = 0
+  function renderFrame(currentTime: number): void {
+    if(inputState.mouseCaptured) {
+      const dt = currentTime - lastTime
+      lastTime = currentTime
+      let requireRedraw = true
+
+      updateUniverse(app.universe, currentTime)
+      updateLocalBodyInstanceData(app.universe, renderState.instanceAllocator, gpu.device)
+
+      // Handle mouse movement
+      const [dx, dy] = inputState.mouseMovement
+      if(dx != 0 || dy != 0) {
+        rotateFirstPersonCamera(0.001 * dy, 0.001 * dx, sceneState.firstPersonCamera)
+        applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
+        inputState.mouseMovement[0] = 0
+        inputState.mouseMovement[1] = 0
+        requireRedraw = true
+      }
+
+      // Handle keyboard movement
+      if(inputState.keyDown['KeyW'] || inputState.keyDown['ArrowUp']) {
+        moveFirstPersonCameraForward(movementSpeed * dt, sceneState.firstPersonCamera)
+        applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
+        requireRedraw = true
+      } else if(inputState.keyDown['KeyS'] || inputState.keyDown['ArrowDown']) {
+        moveFirstPersonCameraForward(-movementSpeed * dt, sceneState.firstPersonCamera)
+        applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
+        requireRedraw = true
+      }
+      if(inputState.keyDown['KeyA'] || inputState.keyDown['ArrowLeft']) {
+        moveFirstPersonCameraRight(movementSpeed * dt, sceneState.firstPersonCamera)
+        applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
+        requireRedraw = true
+      } else if(inputState.keyDown['KeyD'] || inputState.keyDown['ArrowRight']) {
+        moveFirstPersonCameraRight(-movementSpeed * dt, sceneState.firstPersonCamera)
+        applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
+        requireRedraw = true
+      }
+      if(requireRedraw) {
+        frame(0)
+      }
+      requestAnimationFrame(renderFrame)
+    }
+    
+  }
   //function frame() {
   //  GPU.frame(gpu)
   //  requestAnimationFrame(frame)
   //}
   //
-  //requestAnimationFrame(frame)
+  requestAnimationFrame(renderFrame)
 }
 
 

@@ -97,23 +97,31 @@ export function createMainSampler(device: GPUDevice): GPUSampler {
     label: 'main-sampler',
     magFilter: 'linear',
     minFilter: 'linear',
+    mipmapFilter: 'linear',
+    maxAnisotropy: 3,
+  })
+}
+
+/** Create the pipeline layout. */
+export function createMainPipelineLayout(
+    bindGroupLayout: GPUBindGroupLayout,
+    device: GPUDevice): GPUPipelineLayout {
+  return device.createPipelineLayout({
+    label: 'main-pipeline-layout',
+    bindGroupLayouts: [bindGroupLayout],
   })
 }
 
 /** Create the main pipeline object. */
 export async function createMainPipeline(
-    bindGroupLayout: GPUBindGroupLayout,
+    layout: GPUPipelineLayout,
     presentationFormat: GPUTextureFormat,
     device: GPUDevice): Promise<GPURenderPipeline> {
   const vertexShader = await loadShader('/shader/entity.vert.wgsl', device)
   const fragShader = await loadShader('/shader/entity.frag.wgsl', device)
-  const pipelineLayout = device.createPipelineLayout({
-    label: 'main-pipeline-layout',
-    bindGroupLayouts: [bindGroupLayout],
-  })
   const pipeline = device.createRenderPipeline({
     label: 'main-pipeline',
-    layout: pipelineLayout,
+    layout,
     vertex: {
       module: vertexShader,
       entryPoint: 'main',
@@ -140,6 +148,10 @@ export async function createMainPipeline(
       entryPoint: 'main',
       targets: [{
         format: presentationFormat,
+        blend: {
+          color: { operation: 'add', srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+          alpha: { operation: 'add', srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+        }
       }]
     },
     primitive: {
