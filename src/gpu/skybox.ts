@@ -1,13 +1,6 @@
 import type {GPUContext} from './gpu'
 import {loadShader} from './gpu.js'
-
-export type SkyboxState = {
-  pipeline: GPURenderPipeline;
-  vertexBuffer: GPUBuffer;
-  vertexCount: number;
-  uniformBindGroup?: GPUBindGroup;
-  texture: GPUTexture;
-}
+import type {SkyboxState} from './types'
 
 const VERTICES = [
   // front

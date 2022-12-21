@@ -42,7 +42,6 @@ export function addMesh(
     name,
     vertexPointer, 
     vertexCount,
-    vertexBuffer: store.vertexBuffer, // todo: remove
   }
   store.meshes[meshId] = mesh
   store.nextMeshId++

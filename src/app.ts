@@ -6,13 +6,14 @@ import { createInputState } from './input.js'
 import { loadResourceBundle } from './gpu/resource.js'
 import { createAtlas, getLayerAsImageBitmap } from './gpu/atlas.js'
 import { createInstanceAllocator, registerAllocation, addInstance, updateInstanceData } from './gpu/instance.js'
-import {createInstance, registerModel, RendererState} from './gpu/render.js'
+import {createInstance, registerModel, Renderer} from './gpu/render.js'
 import {vec3, mat4, quat} from '../node_modules/gl-matrix/esm/index.js'
 import {INSTANCE_BLOCK_FLOATS} from './gpu/constants.js'
 import {DrawCallDescriptor, InstanceAllocator, Mat4, ResourceBundle, Vec3, Vec4} from './gpu/types.js'
 import {applyFirstPersonCamera, moveFirstPersonCameraForward, moveFirstPersonCameraRight, rotateFirstPersonCamera} from './gpu/camera.js'
 import {celestialBodyModelMatrix, generateUniverse, localBodyModelMatrix, Universe, updateUniverse} from './universe.js'
 import {getMeshByName} from './gpu/mesh.js'
+import {createScene} from './gpu/scene.js'
 const { sin, cos, log, sqrt, min, max, random, PI } = Math
 
 const app: any = {};
@@ -85,39 +86,37 @@ function setInstanceFields(
   updateInstanceData(buf, instanceId, device, instanceAllocator, 4*4*4)
 }
 
-function setupScene(rendererState: RendererState, device: GPUDevice): void {
+function setupScene(renderer: Renderer): void {
   // Add ground plane
-  const groundModelId = registerModel('ground', 'ground', 1, rendererState)
+  const groundModelId = registerModel('ground', 'ground', 1, renderer)
   mat4.fromTranslation(tempMat4_1, vec3.fromValues(0,-2,0))
-  const groundInstanceId = createInstance(tempMat4_1, groundModelId, rendererState, device)
+  const groundInstanceId = createInstance(tempMat4_1, groundModelId, renderer)
 
   // Add cube
-  const cubeModelId = registerModel('test-object', 'icosphere-3', 1, rendererState)
+  const cubeModelId = registerModel('test-object', 'icosphere-3', 1, renderer)
   mat4.fromTranslation(tempMat4_1, vec3.fromValues(-1,1.5,-3))
-  const cubeInstanceId = createInstance(tempMat4_1, cubeModelId, rendererState, device)
+  const cubeInstanceId = createInstance(tempMat4_1, cubeModelId, renderer)
 }
 
 
-function setupUniverse(
-    rendererState:   RendererState,
-    device: GPUDevice): void {
+function setupUniverse(renderer: Renderer): void {
   const universe = generateUniverse(1000)
   app.universe = universe
 
   // Set up draw call for celestial bodies
-  const starModelId = registerModel('celestial-body', 'icosahedron', 1000, rendererState)
+  const starModelId = registerModel('celestial-body', 'icosahedron', 1000, renderer)
   for(let body of universe.celestialBodies) {
     celestialBodyModelMatrix(body, tempMat4_1)
-    body.instanceId = createInstance(tempMat4_1, starModelId, rendererState, device)
+    body.instanceId = createInstance(tempMat4_1, starModelId, renderer)
   }
 
   // Set up draw call for local bodies
-  const planetModelId = registerModel('local-body', 'icosphere-2', 100, rendererState)
-  const planetModel = rendererState.models[planetModelId]
+  const planetModelId = registerModel('local-body', 'icosphere-2', 100, renderer)
+  const planetModel = renderer.models[planetModelId]
   universe.localBodiesAllocId = planetModel.allocationId
   for(let body of universe.localBodies) {
     localBodyModelMatrix(body, tempMat4_1)
-    body.instanceId = createInstance(tempMat4_1, planetModelId, rendererState, device)
+    body.instanceId = createInstance(tempMat4_1, planetModelId, renderer)
   }
 
 }
@@ -160,14 +159,14 @@ async function main(): Promise<void> {
 
   const inputState = createInputState()
   
-  const renderState = await Render.createRenderer(gpu.presentationFormat, gpu)
-  app.renderState = renderState
-  const sceneState = await Render.createScene(renderState.mainUniformBuffer, gpu)
+  const renderer = await Render.createRenderer(gpu.presentationFormat, gpu)
+  app.renderer = renderer
+  const sceneState = await createScene(renderer.mainUniformBuffer, gpu)
   
-  setupUniverse(renderState, gpu.device)
-  setupScene(renderState, gpu.device)
+  setupUniverse(renderer)
+  setupScene(renderer)
 
-  function frame(count: number) {
+  function addVisibilities(count: number) {
     if(count > 0) {
       Sky.applyLayers(count, visState, gpu)
       Sky.updateSkyUniforms(visState.layers, skyEntity, gpu)
@@ -176,7 +175,7 @@ async function main(): Promise<void> {
       elems.layerCount.innerHTML = visState.layers.toString()
     }
     //GPU.frame(gpu)
-    Render.renderFrame(sceneState, renderState, gpu)
+    Render.renderFrame(sceneState, renderer, gpu)
   }
 
   document.addEventListener('keydown', async ev => {
@@ -186,10 +185,10 @@ async function main(): Promise<void> {
         Sky.getPixels(visState, gpu)
         break
       case 'Space':
-        frame(1)
+        addVisibilities(1)
         break
       case 'Enter':
-        frame(10)
+        addVisibilities(10)
         break
       case 'Period':
         if(!inputState.mouseCaptured)
@@ -209,7 +208,7 @@ async function main(): Promise<void> {
   })
 
   async function getAtlasAsImage() {
-    const imageBitmap = await getLayerAsImageBitmap(0, 3, renderState.atlas, gpu.device)
+    const imageBitmap = await getLayerAsImageBitmap(0, 3, renderer.atlas, gpu.device)
     const canvas = document.createElement('canvas')
     canvas.width = imageBitmap.width
     canvas.height = imageBitmap.height
@@ -245,7 +244,7 @@ async function main(): Promise<void> {
   app.visState = visState
   app.glm = { mat4, vec3, quat }
   
-  frame(500)
+  addVisibilities(0)
   const movementSpeed = 0.004
   let lastTime = 0
   function renderFrame(currentTime: number): void {
@@ -255,7 +254,7 @@ async function main(): Promise<void> {
       let requireRedraw = true
 
       updateUniverse(app.universe, currentTime)
-      updateLocalBodyInstanceData(app.universe, renderState.instanceAllocator, gpu.device)
+      updateLocalBodyInstanceData(app.universe, renderer.instanceAllocator, gpu.device)
 
       // Handle mouse movement
       const [dx, dy] = inputState.mouseMovement
@@ -287,7 +286,7 @@ async function main(): Promise<void> {
         requireRedraw = true
       }
       if(requireRedraw) {
-        frame(0)
+        Render.renderFrame(sceneState, renderer, gpu)
       }
       requestAnimationFrame(renderFrame)
     }

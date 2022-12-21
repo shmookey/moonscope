@@ -9,10 +9,12 @@ const MIN_LAYER_SIZE = 256; // Minimum size of each layer in atlas
 /** Create a new texture atlas. */
 export function createAtlas(
     device: GPUDevice,
-    layerSize: [number, number], 
-    layerCount: number, 
+    size: [number, number, number], // width, height, layers 
     format: GPUTextureFormat,
     mipLevels: number): Atlas {
+
+  const layerSize: [number, number] = [size[0], size[1]]
+  const layerCount = size[2]
 
   // Ensure layer size is square and a power of 2
   if(layerSize[0] & (layerSize[0] - 1) || layerSize[1] & (layerSize[1] - 1) || layerSize[0] !== layerSize[1]) {

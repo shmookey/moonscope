@@ -90,7 +90,6 @@ export type MeshResource = {
   name:          string,         // Human-readable name
   vertexCount:   number,         // Number of vertices in mesh
   vertexPointer: number,         // Byte offset location in vertex buffer
-  vertexBuffer:  GPUBuffer,      // Vertex buffer
 }
 
 export type MeshResourceDescriptor = {
@@ -180,6 +179,7 @@ export type DrawCallDescriptor = {
   instancePointer: number,
   instanceCount:   number,
   bindGroup:       GPUBindGroup,
+  pipeline:        GPURenderPipeline,
 }
 
 /** A renderable inhabitant of a Scene. */
@@ -254,4 +254,47 @@ export type Model = {
   meshId: number,         // ID of mesh resource
   allocationId: number,   // ID of instance allocation
   drawCallId: number,     // ID of draw call
+}
+
+
+export type Scene = {
+  skybox: SkyboxState,
+  nodes: Node[],
+  cameras: Camera[],
+  firstPersonCamera: FirstPersonCamera,
+}
+
+/** Scene node. */
+export type Node = ModelNode 
+                 | TransformNode
+                 | CameraNode
+
+export type BaseNode = {
+  name: string,
+  transform: Mat4,
+  cumulativeTransform: Mat4,
+  parent?: Node,  
+}
+
+/** Model node, a type of leaf node. */
+export type ModelNode = BaseNode & {
+  instanceId: number,
+}
+
+/** Transform node. */
+export type TransformNode = BaseNode & {
+  children: Node[],
+}
+
+/** Camera node, another type of leaf node. */
+export type CameraNode = {
+  camera: Camera,
+}
+
+export type SkyboxState = {
+  pipeline: GPURenderPipeline;
+  vertexBuffer: GPUBuffer;
+  vertexCount: number;
+  uniformBindGroup?: GPUBindGroup;
+  texture: GPUTexture;
 }

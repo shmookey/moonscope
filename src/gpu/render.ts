@@ -1,27 +1,31 @@
 //import {vec3} from "gl-matrix"
 import type {GPUContext} from './gpu'
-import type {Atlas, Camera, FirstPersonCamera, DrawCallDescriptor, Entity, InstanceAllocator, Mat4, Renderable, ResourceBundle, MeshStore, Model} from './types'
-import type {SkyboxState} from './skybox.js'
-import * as Skybox from './skybox.js'
-import * as SceneMgr from './scene.js'
-import {loadShader} from './gpu.js'
+import type {Atlas, Camera, FirstPersonCamera, DrawCallDescriptor, Entity, InstanceAllocator, Mat4, Renderable, ResourceBundle, MeshStore, Model, Scene} from './types'
+import * as PipelineMgr from './pipeline.js'
 import {mat4} from '../../node_modules/gl-matrix/esm/index.js'
 import {createAtlas} from './atlas.js'
-import {createCamera, createFirstPersonCamera, getCameraViewMatrix} from './camera.js'
 import {loadResourceBundle} from './resource.js'
 import {addInstance, createInstanceAllocator, registerAllocation} from './instance.js'
 import {INSTANCE_BLOCK_SIZE, INSTANCE_INDEX_SIZE, UNIFORM_BUFFER_FLOATS, VERTEX_SIZE} from './constants.js'
 import {createMeshStore, getMeshByName} from './mesh.js'
+import {getCameraViewMatrix} from './camera.js'
 
 
-export type Scene = {
-  skybox: SkyboxState,
-  entities: Entity[],
-  cameras: Camera[],
-  firstPersonCamera: FirstPersonCamera,
-}
-
-export type RendererState = {
+/** Renderer state. 
+ * 
+ * The purpose of a renderer is to rasterize a scene and produce an image. The
+ * renderer maintains pipeline objects and GPU buffers for geometry, textures, 
+ * instance and uniform data. A renderer instance is associated with a single
+ * GPU device and pipeline layout, and consequently a consistent vertex format,
+ * shdder interface, texture format, instance and uniform data layout.
+ * 
+ * A renderer also maintains a collection of models, which associate a mesh
+ * resource with instance data and a draw call descriptor. 
+ * 
+ * A renderer may contain data for multiple scenes, but a scene is associated
+ * with a single renderer.
+ */
+export type Renderer = {
   viewMatrix: Mat4,
   uniformData: Float32Array,
   mainBindGroup: GPUBindGroup,
@@ -38,51 +42,43 @@ export type RendererState = {
   models: Model[],
   nextModelId: number,
   nextDrawCallId: number,
+  device: GPUDevice,
 }
 
 const UNIFORM_BUFFER_LENGTH = 2 * 4*4*4
 const tempInstanceData = new Float32Array(INSTANCE_BLOCK_SIZE/4)
 
-export async function createScene(
-    uniformBuffer: GPUBuffer,
-    gpu: GPUContext): Promise<Scene> {
-
-  const skybox = await Skybox.create(uniformBuffer, gpu)
-  const defaultCamera = createCamera(gpu.aspect)
-  const firstPersonCamera = createFirstPersonCamera()
-
-  return {
-    cameras: [defaultCamera],
-    entities: [],
-    skybox,
-    firstPersonCamera,
-  }
-}
 
 export async function createRenderer(
     presentationFormat: GPUTextureFormat,
-    gpu: GPUContext): Promise<RendererState> {
+    gpu: GPUContext,
+    instanceStorageCapacity: number     = 5000,
+    vertexStorageCapacity: number       = 10000,
+    atlasSize: [number, number, number] = [4096, 4096, 1],
+    atlasFormat: GPUTextureFormat       = 'rgba8unorm',
+    atlasMipLevels: number              = 6,
+    ): Promise<Renderer> {
 
   const uniformData = new Float32Array(UNIFORM_BUFFER_FLOATS)
   const viewMatrix = mat4.create()
-  const atlas = createAtlas(gpu.device, [4096, 4096], 1, 'rgba8unorm', 6)
-  const meshStore = createMeshStore(10000, VERTEX_SIZE, gpu.device)
+  const atlas = createAtlas(gpu.device, atlasSize, atlasFormat, atlasMipLevels)
+  const meshStore = createMeshStore(vertexStorageCapacity, VERTEX_SIZE, gpu.device)
   const bundle = await loadResourceBundle('/assets/bundle.json', atlas, meshStore, gpu.device)
-  const instanceAllocator = createInstanceAllocator(gpu.device, 5000)
-  const mainBindGroupLayout = SceneMgr.createMainBindGroupLayout(gpu.device)
-  const mainSampler = SceneMgr.createMainSampler(gpu.device)
-  const mainUniformBuffer = SceneMgr.createMainUniformBuffer(gpu.device)
-  const mainBindGroup = SceneMgr.createMainBindGroup(
+  const instanceAllocator = createInstanceAllocator(gpu.device, instanceStorageCapacity)
+  const mainBindGroupLayout = PipelineMgr.createMainBindGroupLayout(gpu.device)
+  const mainSampler = PipelineMgr.createMainSampler(gpu.device)
+  const mainUniformBuffer = PipelineMgr.createMainUniformBuffer(gpu.device)
+  const mainBindGroup = PipelineMgr.createMainBindGroup(
     mainBindGroupLayout, 
     mainUniformBuffer, 
     instanceAllocator.storageBuffer,
     atlas,
     mainSampler,
     gpu.device)
-  const pipelineLayout = SceneMgr.createMainPipelineLayout(
+  const pipelineLayout = PipelineMgr.createMainPipelineLayout(
     mainBindGroupLayout,
     gpu.device)
-  const mainPipeline = await SceneMgr.createMainPipeline(
+  const mainPipeline = await PipelineMgr.createMainPipeline(
     pipelineLayout,
     presentationFormat,
     gpu.device)
@@ -104,6 +100,7 @@ export async function createRenderer(
     models: [],
     nextModelId: 0,
     nextDrawCallId: 0,
+    device: gpu.device,
   }
 }
 
@@ -115,7 +112,7 @@ export function registerModel(
     name: string,
     meshName: string,
     maxInstances: number,
-    state: RendererState): number {
+    state: Renderer): number {
   const id = state.nextModelId
   const allocationId = registerAllocation(maxInstances, state.instanceAllocator)
   const mesh = getMeshByName(meshName, state.meshStore)
@@ -137,6 +134,7 @@ export function registerModel(
     instancePointer: state.instanceAllocator.allocations[allocationId].instanceIndex * 4,
     instanceCount:   0,
     bindGroup:       state.mainBindGroup,
+    pipeline:        state.mainPipeline,
   }
 
   state.nextModelId++
@@ -153,14 +151,13 @@ export function registerModel(
 export function createInstance(
     modelMatrix: Mat4,
     modelId: number,
-    state: RendererState,
-    device: GPUDevice): number {
+    state: Renderer): number {
   const model = state.models[modelId]
   tempInstanceData.set(modelMatrix)
   const instanceId = addInstance(
     model.allocationId, 
     tempInstanceData, 
-    device, 
+    state.device, 
     state.instanceAllocator
   )
   const drawCall = state.drawCalls[model.drawCallId]
@@ -172,7 +169,7 @@ export function createInstance(
 export function renderView(
     cam: Camera, 
     scene: Scene, 
-    state: RendererState, 
+    state: Renderer, 
     pass: GPURenderPassDescriptor, 
     gpu: GPUContext) {
 
@@ -207,7 +204,7 @@ export function renderView(
   gpu.device.queue.submit([commandEncoder.finish()])
 }
 
-export function renderFrame(scene: Scene, state: RendererState, gpu: GPUContext) {
+export function renderFrame(scene: Scene, state: Renderer, gpu: GPUContext) {
   (gpu.renderPassDescriptor as any).colorAttachments[0].view = gpu.context
     .getCurrentTexture()
     .createView()
