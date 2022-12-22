@@ -29,7 +29,7 @@
  * code are linked by instance IDs, which are unique and do not change.
  */
 
-import type { InstanceAllocator } from "./types"
+import type { InstanceAllocation, InstanceAllocator, InstanceRecord } from "./types"
 import { INSTANCE_INDEX_SIZE, INSTANCE_BLOCK_SIZE } from "./constants.js"
 
 /** Initialise the instance allocator. */
@@ -64,7 +64,15 @@ export function registerAllocation(capacity: number, allocator: InstanceAllocato
   }
   const allocationId = allocator.nextAllocationId
   const instanceIndex = allocator.nextInstanceSlot
-  const meshAllocation = { id: allocationId, instanceIndex, capacity, numInstances: 0 }
+  const meshAllocation: InstanceAllocation = {
+    id: allocationId, 
+    instanceIndex, 
+    capacity, 
+    numInstances: 0,
+    numActive: 0,
+    slotData: new Uint32Array(capacity),
+    slotInstances: new Uint32Array(capacity),
+  }
   allocator.allocations[allocationId] = meshAllocation
   allocator.nextAllocationId++
   allocator.nextInstanceSlot += capacity
@@ -73,14 +81,18 @@ export function registerAllocation(capacity: number, allocator: InstanceAllocato
 }
 
 
-/** Add an instance to the buffer. Returns the instance ID. */
+/** Add an instance to the buffer. Returns the instance ID.
+ * 
+ * If `activate` is true, the instance will be given an instance buffer slot.
+ */
 export function addInstance(
     allocationId: number, 
-    data: Float32Array, 
+    data: Float32Array | null, 
     device: GPUDevice, 
-    allocator: InstanceAllocator): number {
+    allocator: InstanceAllocator,
+    activate: boolean = true): number {
 
-  if(data.byteLength !== INSTANCE_BLOCK_SIZE) {
+  if(data !== null && data.byteLength !== INSTANCE_BLOCK_SIZE) {
     throw new Error('Invalid instance data size')
   }
   if(!(allocationId in allocator.allocations)) {
@@ -100,25 +112,94 @@ export function addInstance(
     storageSlot = allocator.nextStorageSlot
     allocator.nextStorageSlot++
   }
-  const instanceSlot = allocation.instanceIndex + allocation.numInstances
-  const instance = { instanceId, allocationId, instanceSlot, storageSlot }
+
+  const instance: InstanceRecord = { 
+    instanceId, 
+    allocationId, 
+    instanceSlot: null, 
+    storageSlot 
+  }
   allocator.instances[instanceId] = instance
 
-  const instancePointer = instanceSlot * INSTANCE_INDEX_SIZE
   const storagePointer = storageSlot * INSTANCE_BLOCK_SIZE
-  device.queue.writeBuffer(allocator.instanceBuffer, instancePointer, new Uint32Array([storageSlot]))
-  device.queue.writeBuffer(allocator.storageBuffer, storagePointer, data.buffer)
+
+  if(data !== null)
+    device.queue.writeBuffer(allocator.storageBuffer, storagePointer, data.buffer)
+
   allocation.numInstances++
   allocator.nextInstanceId++
+
+  if(activate) {
+    activateInstance(instanceId, allocator, device)
+  }
+
   return instanceId
+}
+
+/** Activate an instance in the buffer.
+ * 
+ * Places an index into the storage buffer corresponding to the instance in the
+ * instance buffer for rendering.
+ */
+export function activateInstance(
+    instanceId: number,
+    allocator: InstanceAllocator,
+    device: GPUDevice): void {
+  if(!(instanceId in allocator.instances)) {
+    throw new Error('Invalid instance ID')
+  }
+  const instance = allocator.instances[instanceId]
+  if(instance.instanceSlot !== null) {
+    console.warn(`Activating already active instance: ${instanceId}`)
+    return
+  }
+  
+  const allocation = allocator.allocations[instance.allocationId]
+  const base = allocation.instanceIndex
+  const instanceSlot = base + allocation.numActive
+  const instancePointer = instanceSlot * INSTANCE_INDEX_SIZE
+  device.queue.writeBuffer(allocator.instanceBuffer, instancePointer, new Uint32Array([instance.storageSlot]))
+  allocation.slotData[instanceSlot - base] = instance.storageSlot
+  allocation.slotInstances[instanceSlot - base] = instanceId
+  instance.instanceSlot = instanceSlot
+  allocation.numActive++
+}
+
+/** Deactivate an instance in the buffer. */
+export function deactivateInstance(
+    instanceId: number,
+    allocator: InstanceAllocator,
+    device: GPUDevice): void {
+  if(!(instanceId in allocator.instances)) {
+    throw new Error('Invalid instance ID')
+  }
+  const instance = allocator.instances[instanceId]
+  if(instance.instanceSlot === null) {
+    console.warn(`Deactivating already inactive instance: ${instanceId}`)
+    return
+  }
+  const allocation = allocator.allocations[instance.allocationId]
+  const base = allocation.instanceIndex
+  const rel = instance.instanceSlot - base
+  const instanceIdsAfter = allocation.slotInstances.slice(rel + 1, allocation.numActive)
+  const storageSlotsAfter = allocation.slotData.slice(rel + 1, allocation.numActive)
+  allocation.slotData.set(storageSlotsAfter, rel)
+  allocation.slotInstances.set(instanceIdsAfter, rel)
+  allocation.slotData[allocation.numActive - 1] = 0
+  allocation.slotInstances[allocation.numActive - 1] = 0
+  const instancePointer = instance.instanceSlot * INSTANCE_INDEX_SIZE
+  const changedRegion = allocation.slotData.slice(rel, allocation.numActive)
+  device.queue.writeBuffer(allocator.instanceBuffer, instancePointer, changedRegion)
+  instance.instanceSlot = null
+  allocation.numActive--
 }
 
 /** Update an instance in the buffer. */
 export function updateInstanceData(
     instanceData: Float32Array, 
     instanceId: number, 
-    device: GPUDevice, 
     allocator: InstanceAllocator,
+    device: GPUDevice, 
     offset: number = 0): void {
   
   if(instanceData.byteLength + offset > INSTANCE_BLOCK_SIZE) {

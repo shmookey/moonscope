@@ -1,8 +1,8 @@
 //import {vec3} from "gl-matrix"
 import type {GPUContext} from './gpu'
-import type {Atlas, Camera, FirstPersonCamera, DrawCallDescriptor, Entity, InstanceAllocator, Mat4, Renderable, ResourceBundle, MeshStore, Model, Scene} from './types'
+import type {Atlas, Camera, FirstPersonCamera, DrawCallDescriptor, Entity, InstanceAllocator, Mat4, Renderable, ResourceBundle, MeshStore, Model, Scene, Renderer, SceneGraph} from './types'
 import * as PipelineMgr from './pipeline.js'
-import {mat4} from '../../node_modules/gl-matrix/esm/index.js'
+import {mat4} from 'gl-matrix'
 import {createAtlas} from './atlas.js'
 import {loadResourceBundle} from './resource.js'
 import {addInstance, createInstanceAllocator, registerAllocation} from './instance.js'
@@ -11,39 +11,6 @@ import {createMeshStore, getMeshByName} from './mesh.js'
 import {getCameraViewMatrix} from './camera.js'
 
 
-/** Renderer state. 
- * 
- * The purpose of a renderer is to rasterize a scene and produce an image. The
- * renderer maintains pipeline objects and GPU buffers for geometry, textures, 
- * instance and uniform data. A renderer instance is associated with a single
- * GPU device and pipeline layout, and consequently a consistent vertex format,
- * shdder interface, texture format, instance and uniform data layout.
- * 
- * A renderer also maintains a collection of models, which associate a mesh
- * resource with instance data and a draw call descriptor. 
- * 
- * A renderer may contain data for multiple scenes, but a scene is associated
- * with a single renderer.
- */
-export type Renderer = {
-  viewMatrix: Mat4,
-  uniformData: Float32Array,
-  mainBindGroup: GPUBindGroup,
-  mainBindGroupLayout: GPUBindGroupLayout,
-  mainUniformBuffer: GPUBuffer,
-  mainSampler: GPUSampler,
-  mainPipeline: GPURenderPipeline,
-  pipelineLayout: GPUPipelineLayout,
-  atlas: Atlas,
-  bundle: ResourceBundle,
-  instanceAllocator: InstanceAllocator,
-  meshStore: MeshStore,
-  drawCalls: DrawCallDescriptor[],
-  models: Model[],
-  nextModelId: number,
-  nextDrawCallId: number,
-  device: GPUDevice,
-}
 
 const UNIFORM_BUFFER_LENGTH = 2 * 4*4*4
 const tempInstanceData = new Float32Array(INSTANCE_BLOCK_SIZE/4)
@@ -58,9 +25,10 @@ export async function createRenderer(
     atlasFormat: GPUTextureFormat       = 'rgba8unorm',
     atlasMipLevels: number              = 6,
     ): Promise<Renderer> {
-
+  
+  const outputSize: [number,number] = [gpu.presentationSize.width, gpu.presentationSize.height]
   const uniformData = new Float32Array(UNIFORM_BUFFER_FLOATS)
-  const viewMatrix = mat4.create()
+  const viewMatrix = mat4.create() as Mat4
   const atlas = createAtlas(gpu.device, atlasSize, atlasFormat, atlasMipLevels)
   const meshStore = createMeshStore(vertexStorageCapacity, VERTEX_SIZE, gpu.device)
   const bundle = await loadResourceBundle('/assets/bundle.json', atlas, meshStore, gpu.device)
@@ -82,8 +50,16 @@ export async function createRenderer(
     pipelineLayout,
     presentationFormat,
     gpu.device)
+  const depthTexture = gpu.device.createTexture({
+    size: outputSize,
+    format: 'depth24plus',
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  })
+  const depthTextureView = depthTexture.createView()
+
 
   return {
+    outputSize,
     uniformData,
     viewMatrix,
     mainBindGroup,
@@ -101,6 +77,8 @@ export async function createRenderer(
     nextModelId: 0,
     nextDrawCallId: 0,
     device: gpu.device,
+    depthTexture,
+    depthTextureView,
   }
 }
 
@@ -169,14 +147,15 @@ export function createInstance(
 export function renderView(
     cam: Camera, 
     scene: Scene, 
+    sceneGraph: SceneGraph,
     state: Renderer, 
     pass: GPURenderPassDescriptor, 
     gpu: GPUContext) {
 
   // Todo: only update if camera is dirty
   getCameraViewMatrix(state.viewMatrix, cam)
-  state.uniformData.set(state.viewMatrix, 0)
-  state.uniformData.set(cam.projection, 16)
+  state.uniformData.set(sceneGraph.views.default.viewMatrix, 0)
+  state.uniformData.set(sceneGraph.views.default.projection, 16)
   gpu.device.queue.writeBuffer(state.mainUniformBuffer, 0, state.uniformData)
   cam.isDirty = false
 
@@ -199,15 +178,37 @@ export function renderView(
     passEncoder.setVertexBuffer(1, instanceBuffer, instancePointer, instancesLength)
     passEncoder.draw(drawCall.vertexCount, drawCall.instanceCount, 0, 0)
   }
+  for(let call of sceneGraph.drawCalls) {
+    if(call.instanceCount === 0)
+      continue
+    const {vertexBuffer, vertexPointer, instanceBuffer, instancePointer} = call 
+    const verticesLength = call.vertexCount * VERTEX_SIZE
+    const instancesLength = call.instanceCount * INSTANCE_INDEX_SIZE
+    passEncoder.setVertexBuffer(0, vertexBuffer, vertexPointer, verticesLength)
+    passEncoder.setVertexBuffer(1, instanceBuffer, instancePointer, instancesLength)
+    passEncoder.draw(call.vertexCount, call.instanceCount, 0, 0)
+  }
 
   passEncoder.end()
   gpu.device.queue.submit([commandEncoder.finish()])
 }
 
-export function renderFrame(scene: Scene, state: Renderer, gpu: GPUContext) {
+// todo: don't pass in a scenegraph, make the scenegraph issue draw calls?
+export function renderFrame(scene: Scene, sceneGraph: SceneGraph, state: Renderer, gpu: GPUContext) {
   (gpu.renderPassDescriptor as any).colorAttachments[0].view = gpu.context
     .getCurrentTexture()
     .createView()
+  gpu.renderPassDescriptor.depthStencilAttachment = {
+    view: state.depthTextureView,
+    depthClearValue: 1.0,
+    depthStoreOp: 'store',
+    depthLoadOp: 'clear',
+//    stencilClearValue: 0,
+//    stencilStoreOp: 'store',
+//    stencilLoadOp: 'clear',
+  }
+
   
-  renderView(scene.cameras[0], scene, state, gpu.renderPassDescriptor, gpu)
+  renderView(scene.cameras[0], scene, sceneGraph, state, gpu.renderPassDescriptor, gpu)
+  gpu.renderPassDescriptor.depthStencilAttachment = undefined
 }

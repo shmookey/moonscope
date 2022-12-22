@@ -3,6 +3,14 @@
   <head>
     <meta charset="utf-8">
     <link rel="stylesheet" href="style/app.css">
+    <script type="importmap">
+      {
+        "imports": {
+          "gl-matrix": "/node_modules/gl-matrix/esm/index.js",
+          "@petamoriken/float16": "/node_modules/@petamoriken/float16/browser/float16.mjs"
+        }
+      }
+    </script>      
     <script type="module" src="build/app.js"></script>
   </head>
   <body>

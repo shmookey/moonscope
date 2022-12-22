@@ -24,6 +24,12 @@
       "id":      3,
       "size":    [ 512, 512 ],
       "src":     "/assets/texture/default-triangle.png"
+    },
+    {
+      "label":   "moon",
+      "id":      4,
+      "size":    [ 1024, 512 ],
+      "src":     "/assets/texture/moon.jpg"
     }
   ],
   "meshes": [
@@ -63,6 +69,12 @@
       "vertexCount": 3840,
       "src":         "/assets/mesh/icosphere-3.json",
       "srcType":     "json"
+    },{
+      "name":        "moon",
+      "vertexCount": 960,
+      "src":         "/assets/mesh/icosphere-2-latlon.json",
+      "srcType":     "json",
+      "texRemap":    { "4": 4 }
     }
   ]
 }

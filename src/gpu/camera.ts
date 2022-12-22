@@ -14,9 +14,7 @@ export function createCamera(aspect: number): Camera {
   const orientation = quat.create()
   const projection = mat4.create()
   mat4.perspectiveZO(projection, PI/2, aspect, 0.1, Infinity)
-  console.log(orientation)
-  return {isDirty: true, projection, position,
-      orientation}
+  return {isDirty: true, projection, position, orientation}
 }
 
 /** Create a new first-person camera.

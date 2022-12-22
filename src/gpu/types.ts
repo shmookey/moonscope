@@ -49,16 +49,16 @@ export type Mesh = {
  * Size: 10 floats / 40 bytes
  */
 export type XVertex = [
-  number,  // x
-  number,  // y
-  number,  // z
-  number,  // w
-  number,  // u
-  number,  // v
-  number,  // nx
-  number,  // ny
-  number,  // nz
-  number,  // texture ID
+  number,  // 0 x
+  number,  // 1 y
+  number,  // 2 z 
+  number,  // 3 w
+  number,  // 4 u
+  number,  // 5 v
+  number,  // 6 nx
+  number,  // 7 ny
+  number,  // 8 nz
+  number,  // 9 texture ID
 ]
 
 /** Extended mesh format. Used for offline storage. */
@@ -99,6 +99,11 @@ export type MeshResourceDescriptor = {
   src?:        string,          // Path to file containing mesh data
   srcType?:    string,          // 'json' or 'bin'
   vertices?:   XVertex[],       // Optionally, vertex data can be provided directly
+  texRemap?: TextureRemapping, // Texture IDs remapping
+}
+
+export type TextureRemapping = {
+  [texId: number]: number
 }
 
 export type ResourceBundleDescriptor = {
@@ -209,14 +214,17 @@ export type InstanceAllocation = {
   instanceIndex: number,        // Start index in instance buffer
   capacity:      number,        // Number of instance slots
   numInstances:  number,        // Current instance count
+  numActive:     number,        // Number of instances that have been assigned instance buffer slots
+  slotData:      Uint32Array,   // Contents of instance buffer controlled by this allocation
+  slotInstances: Uint32Array,   // Instance IDs of instances in this allocation currently active at each slot
 }
 
 /** Instance attributes. */
 export type InstanceRecord = {
-  instanceId:      number,       // Instance ID
-  allocationId:    number,       // ID of mesh allocation
-  instanceSlot:    number,       // Position in instance buffer
-  storageSlot:     number,       // Uniform index for shaders
+  instanceId:      number,        // Instance ID
+  allocationId:    number,        // ID of mesh allocation
+  instanceSlot:    number | null, // Position in instance buffer, if active, otherwise null
+  storageSlot:     number,        // Uniform index for shaders
 }
 
 /** Camera type.
@@ -264,37 +272,193 @@ export type Scene = {
   firstPersonCamera: FirstPersonCamera,
 }
 
-/** Scene node. */
-export type Node = ModelNode 
-                 | TransformNode
-                 | CameraNode
-
-export type BaseNode = {
-  name: string,
-  transform: Mat4,
-  cumulativeTransform: Mat4,
-  parent?: Node,  
-}
-
-/** Model node, a type of leaf node. */
-export type ModelNode = BaseNode & {
-  instanceId: number,
-}
-
-/** Transform node. */
-export type TransformNode = BaseNode & {
-  children: Node[],
-}
-
-/** Camera node, another type of leaf node. */
-export type CameraNode = {
-  camera: Camera,
-}
-
 export type SkyboxState = {
   pipeline: GPURenderPipeline;
   vertexBuffer: GPUBuffer;
   vertexCount: number;
   uniformBindGroup?: GPUBindGroup;
   texture: GPUTexture;
+}
+
+
+//
+//    SCENE GRAPH
+//
+
+
+/** Scene graph backend.
+ * 
+ * A SceneGraph is a tree of nodes representing visible objects, light sources,
+ * cameras and coordinate reference frames, each of which may have a transform
+ * matrix applied cumulatively to its children. The purpose of a scene graph is
+ * to provide a spatial representation of a scene, wherein objects are rendered
+ * from the perspective of cameras and illuminated by light sources (which, for
+ * the purpose of shadow mapping, are also a kind of camera).
+ * 
+ * For basic information on scene graphs and their usage, see the documentation
+ * for the `Scene` type, which is a higher-level abstraction containing only
+ * the logical structure of the scene. The `SceneGraph` type is a lower-level
+ * representation of the scene graph which is used by the renderer. It maps the
+ * objects in the scene graph to the GPU resources and draw calls that are used
+ * to render them.
+ * 
+ * Whereas a `Scene` object may be considered to contain "pure data" and may be
+ * manipulated without restriction at little cost and without side effects, a
+ * `SceneGraph` should only be modified by functions in the scene graph module;
+ * these functions generally entail relatively costly GPU operations which are
+ * issued immediately (though not necessarily synchronously). Since many common
+ * use cases involve frequent manipulation of the scene graph, and it is often
+ * difficult to predict where individual updates could be batched from within
+ * the process that generates them, it may be more convenient to use a `Scene`-
+ * diffing algorithm to determine a final, minimal set of changes to the scene
+ * graph and then apply them to the `SceneGraph` all at once and at an opportune
+ * moment. This is especially the case where an "update loop" is running more
+ * frequently than the rendering loop, as is often the case in games.
+ * 
+ * Object nodes are associated with a model to be rendered. The model must be
+ * registered with the SceneGraph with `registerModel()` before it can be used
+ * to create nodes. Registering a model allocates space in the instance buffer
+ * for instances (nodes) of the model, and creates a draw call descriptor for
+ * rendering it. The draw call descriptor is initialised with an instance count
+ * of zero, and is updated as nodes are attached to the tree. A node may only
+ * be attached to one parent at a time, and its resources become invalid after
+ * it is destroyed.
+ * 
+ * The SceneGraph implementation is responsible for ordering draw calls so that
+ * objects are rendered correctly and without unnecessary and costly changes to
+ * the GPU state.
+ */
+export type SceneGraph = {
+  label?:         string,
+  root:           Node,
+  nodes:          Node[],
+  drawCalls:      DrawCallDescriptor[],
+  models:         { [name: string]: Model },
+  renderer:       Renderer,
+  nextDrawCallId: number,
+  views:          { [name: string]: View }, // Named view objects, connect to cameras
+}
+
+/** Scene node. */
+export type Node = ModelNode 
+                 | TransformNode
+                 | CameraNode
+                 | LightSourceNode
+
+/** Base node type. */
+export interface BaseNode {
+  label?:    string,
+  nodeType:  'model' | 'transform' | 'camera' | 'light',
+  transform: Mat4,
+  parent:    Node | null,
+  root:      Node | null,
+  children:  Node[],
+}
+
+export interface LightSourceNode extends BaseNode {
+  nodeType:  'light',
+  intensity: number,
+}
+
+/** Model node, a type of leaf node. */
+export interface ModelNode extends BaseNode {
+  nodeType:   'model',
+  instanceId: number,
+  modelName:  string,
+  drawCallId: number,
+}
+
+/** Transform node. */
+export interface TransformNode extends BaseNode {
+  nodeType: 'transform',
+}
+
+/** Camera node.
+ * 
+ * Writes a view matrix to a registered view object.
+ */
+export interface CameraNode extends BaseNode {
+  nodeType:   'camera',
+  view:       View | null,
+}
+
+
+/** Scene view.
+ * 
+ * Stores view/projection matrices and may be connected to a camera node.
+ */
+export type View = {
+  name:       string,
+  projection: Mat4,
+  viewMatrix: Mat4,
+  camera:     CameraNode | null,
+}
+
+
+/** Scene view descriptor. */
+export type ViewDescriptor = 
+  PerspectiveViewDescriptor |
+  OrthographicViewDescriptor
+
+/** Perspective camera node descriptor. */
+export interface PerspectiveViewDescriptor {
+  type:   'perspective',
+  fovy:   number,
+  aspect: number,
+  near:   number,
+  far:    number,
+}
+
+/** Orthographic camera node descriptor. */
+export interface OrthographicViewDescriptor {
+  type:   'orthographic',
+  left:   number,
+  right:  number,
+  bottom: number,
+  top:    number,
+  near:   number,
+  far:    number,
+}
+
+
+//
+//    RENDERER
+//
+
+
+/** Renderer state. 
+ * 
+ * The purpose of a renderer is to rasterize a scene and produce an image. The
+ * renderer maintains pipeline objects and GPU buffers for geometry, textures, 
+ * instance and uniform data. A renderer instance is associated with a single
+ * GPU device and pipeline layout, and consequently a consistent vertex format,
+ * shdder interface, texture format, instance and uniform data layout.
+ * 
+ * A renderer also maintains a collection of models, which associate a mesh
+ * resource with instance data and a draw call descriptor. 
+ * 
+ * A renderer may contain data for multiple scenes, but a scene is associated
+ * with a single renderer.
+ */
+export type Renderer = {
+  viewMatrix: Mat4,
+  uniformData: Float32Array,
+  mainBindGroup: GPUBindGroup,
+  mainBindGroupLayout: GPUBindGroupLayout,
+  mainUniformBuffer: GPUBuffer,
+  mainSampler: GPUSampler,
+  mainPipeline: GPURenderPipeline,
+  pipelineLayout: GPUPipelineLayout,
+  atlas: Atlas,
+  bundle: ResourceBundle,
+  instanceAllocator: InstanceAllocator,
+  meshStore: MeshStore,
+  drawCalls: DrawCallDescriptor[],
+  models: Model[],
+  nextModelId: number,
+  nextDrawCallId: number,
+  device: GPUDevice,
+  depthTexture: GPUTexture,
+  depthTextureView: GPUTextureView,
+  outputSize: [number, number],
 }

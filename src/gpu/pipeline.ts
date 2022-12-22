@@ -160,6 +160,11 @@ export async function createMainPipeline(
       cullMode: 'back',
       
     },
+    depthStencil: {
+      depthWriteEnabled: true,
+      depthCompare: 'less',
+      format: 'depth24plus',
+    },
   })
   return pipeline
 }

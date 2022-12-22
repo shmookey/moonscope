@@ -90,6 +90,7 @@ export async function create(uniformBuffer: GPUBuffer, gpu: GPUContext): Promise
     bindGroupLayouts: [uniformBindGroupLayout],
   })
   const pipeline = gpu.device.createRenderPipeline({
+    label: 'skybox-pipeline',
     layout: pipelineLayout,
     vertex: {
       module: vertexShader,
@@ -113,6 +114,11 @@ export async function create(uniformBuffer: GPUBuffer, gpu: GPUContext): Promise
     primitive: {
       topology: 'triangle-list',
       cullMode: 'none',
+    },
+    depthStencil: {
+      depthWriteEnabled: false,
+      depthCompare: 'less',
+      format: 'depth24plus',
     },
   })
   const sampler = gpu.device.createSampler({

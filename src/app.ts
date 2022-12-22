@@ -6,20 +6,21 @@ import { createInputState } from './input.js'
 import { loadResourceBundle } from './gpu/resource.js'
 import { createAtlas, getLayerAsImageBitmap } from './gpu/atlas.js'
 import { createInstanceAllocator, registerAllocation, addInstance, updateInstanceData } from './gpu/instance.js'
-import {createInstance, registerModel, Renderer} from './gpu/render.js'
-import {vec3, mat4, quat} from '../node_modules/gl-matrix/esm/index.js'
+import {createInstance, registerModel} from './gpu/render.js'
+import {vec3, mat4, quat} from 'gl-matrix'
 import {INSTANCE_BLOCK_FLOATS} from './gpu/constants.js'
-import {DrawCallDescriptor, InstanceAllocator, Mat4, ResourceBundle, Vec3, Vec4} from './gpu/types.js'
-import {applyFirstPersonCamera, moveFirstPersonCameraForward, moveFirstPersonCameraRight, rotateFirstPersonCamera} from './gpu/camera.js'
+import type {DrawCallDescriptor, InstanceAllocator, Mat4, ResourceBundle, Vec3, Vec4, Renderer, SceneGraph, ViewDescriptor, Quat} from './gpu/types.js'
+import {applyFirstPersonCamera, getCameraViewMatrix, moveFirstPersonCameraForward, moveFirstPersonCameraRight, rotateFirstPersonCamera} from './gpu/camera.js'
 import {celestialBodyModelMatrix, generateUniverse, localBodyModelMatrix, Universe, updateUniverse} from './universe.js'
 import {getMeshByName} from './gpu/mesh.js'
-import {createScene} from './gpu/scene.js'
+import {attachNode, createCameraNode, createModelNode, createScene, createSceneGraph, createSceneView, registerSceneGraphModel, setNodeTransform} from './gpu/scene.js'
 const { sin, cos, log, sqrt, min, max, random, PI } = Math
 
 const app: any = {};
 (window as any).app = app
-const tempMat4_1 = mat4.create()
-const tempMat4_2 = mat4.create()
+const tempMat4_1 = mat4.create() as Mat4
+const tempMat4_2 = mat4.create() as Mat4
+const tempQ_1 = quat.create() as Quat
 
 type SourceSpec = [
   number,  // X
@@ -63,7 +64,7 @@ function setInstanceModelMatrix(
     instanceId: number, 
     instanceAllocator: InstanceAllocator, 
     device: GPUDevice) {
-  updateInstanceData(modelMatrix, instanceId, device, instanceAllocator, 0)
+  updateInstanceData(modelMatrix, instanceId, instanceAllocator, device, 0)
 }
 
 function setInstanceTextureBounds(
@@ -71,7 +72,7 @@ function setInstanceTextureBounds(
     instanceId: number, 
     instanceAllocator: InstanceAllocator, 
     device: GPUDevice) {
-  updateInstanceData(textureBounds, instanceId, device, instanceAllocator, 4*4*4)
+  updateInstanceData(textureBounds, instanceId, instanceAllocator, device, 4*4*4)
 }
 
 function setInstanceFields(
@@ -83,7 +84,7 @@ function setInstanceFields(
   const buf = new Float32Array(4*4 + 4)
   buf.set(modelMatrix)
   buf.set(textureBounds, 4*4)
-  updateInstanceData(buf, instanceId, device, instanceAllocator, 4*4*4)
+  updateInstanceData(buf, instanceId, instanceAllocator, device, 4*4*4)
 }
 
 function setupScene(renderer: Renderer): void {
@@ -93,9 +94,30 @@ function setupScene(renderer: Renderer): void {
   const groundInstanceId = createInstance(tempMat4_1, groundModelId, renderer)
 
   // Add cube
-  const cubeModelId = registerModel('test-object', 'icosphere-3', 1, renderer)
+  const cubeModelId = registerModel('test-object', 'moon', 1, renderer)
   mat4.fromTranslation(tempMat4_1, vec3.fromValues(-1,1.5,-3))
   const cubeInstanceId = createInstance(tempMat4_1, cubeModelId, renderer)
+}
+
+function setupSceneGraph(renderer: Renderer): SceneGraph {
+  const sceneGraph = createSceneGraph(renderer)
+  const viewDescriptor: ViewDescriptor = {
+    type:   'perspective',
+    fovy:   PI / 2,
+    aspect: renderer.outputSize[0] / renderer.outputSize[1],
+    near:   0.1,
+    far:    Infinity,
+  }
+  createSceneView('default', viewDescriptor, sceneGraph)
+  const cameraNode = createCameraNode('default', sceneGraph)
+  app.cameraNode = cameraNode
+  attachNode(cameraNode, sceneGraph.root, sceneGraph)
+  registerSceneGraphModel('sphere', 'icosphere-2', 100, sceneGraph)
+  const sphereNode = createModelNode('sphere', sceneGraph)
+  mat4.fromTranslation(tempMat4_1, vec3.fromValues(0,0,-4))
+  setNodeTransform(sphereNode, tempMat4_1, sceneGraph)
+  attachNode(sphereNode, sceneGraph.root, sceneGraph)
+  return sceneGraph
 }
 
 
@@ -132,8 +154,8 @@ function updateLocalBodyInstanceData(universe: Universe, instanceAllocator: Inst
     updateInstanceData(
       instanceData, 
       body.instanceId,
-      device,
-      instanceAllocator)
+      instanceAllocator,
+      device)
   }
 }
 
@@ -159,9 +181,16 @@ async function main(): Promise<void> {
 
   const inputState = createInputState()
   
-  const renderer = await Render.createRenderer(gpu.presentationFormat, gpu)
+  const renderer = await Render.createRenderer(
+    gpu.presentationFormat, 
+    gpu,
+    5000,  // instance storage capacity
+    20000, // vertex storage capacity
+  )
   app.renderer = renderer
   const sceneState = await createScene(renderer.mainUniformBuffer, gpu)
+  const sceneGraph = setupSceneGraph(renderer)
+  app.sceneGraph = sceneGraph
   
   setupUniverse(renderer)
   setupScene(renderer)
@@ -175,7 +204,7 @@ async function main(): Promise<void> {
       elems.layerCount.innerHTML = visState.layers.toString()
     }
     //GPU.frame(gpu)
-    Render.renderFrame(sceneState, renderer, gpu)
+    Render.renderFrame(sceneState, sceneGraph, renderer, gpu)
   }
 
   document.addEventListener('keydown', async ev => {
@@ -202,7 +231,7 @@ async function main(): Promise<void> {
         getAtlasAsImage()
         break
       default:
-        console.log(ev.code)
+        //console.log(ev.code)
         break
     }
   })
@@ -251,7 +280,7 @@ async function main(): Promise<void> {
     if(inputState.mouseCaptured) {
       const dt = currentTime - lastTime
       lastTime = currentTime
-      let requireRedraw = true
+      let cameraMoved = true
 
       updateUniverse(app.universe, currentTime)
       updateLocalBodyInstanceData(app.universe, renderer.instanceAllocator, gpu.device)
@@ -263,30 +292,36 @@ async function main(): Promise<void> {
         applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
         inputState.mouseMovement[0] = 0
         inputState.mouseMovement[1] = 0
-        requireRedraw = true
+        cameraMoved = true
       }
 
       // Handle keyboard movement
       if(inputState.keyDown['KeyW'] || inputState.keyDown['ArrowUp']) {
-        moveFirstPersonCameraForward(movementSpeed * dt, sceneState.firstPersonCamera)
-        applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
-        requireRedraw = true
-      } else if(inputState.keyDown['KeyS'] || inputState.keyDown['ArrowDown']) {
         moveFirstPersonCameraForward(-movementSpeed * dt, sceneState.firstPersonCamera)
         applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
-        requireRedraw = true
+        cameraMoved = true
+      } else if(inputState.keyDown['KeyS'] || inputState.keyDown['ArrowDown']) {
+        moveFirstPersonCameraForward(movementSpeed * dt, sceneState.firstPersonCamera)
+        applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
+        cameraMoved = true
       }
       if(inputState.keyDown['KeyA'] || inputState.keyDown['ArrowLeft']) {
-        moveFirstPersonCameraRight(movementSpeed * dt, sceneState.firstPersonCamera)
-        applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
-        requireRedraw = true
-      } else if(inputState.keyDown['KeyD'] || inputState.keyDown['ArrowRight']) {
         moveFirstPersonCameraRight(-movementSpeed * dt, sceneState.firstPersonCamera)
         applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
-        requireRedraw = true
+        cameraMoved = true
+      } else if(inputState.keyDown['KeyD'] || inputState.keyDown['ArrowRight']) {
+        moveFirstPersonCameraRight(movementSpeed * dt, sceneState.firstPersonCamera)
+        applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
+        cameraMoved = true
       }
-      if(requireRedraw) {
-        Render.renderFrame(sceneState, renderer, gpu)
+      if(cameraMoved) {
+        // TODO: fix this crap up
+        quat.invert(tempQ_1, sceneState.cameras[0].orientation)
+        mat4.fromQuat(tempMat4_1, tempQ_1)
+        mat4.fromTranslation(tempMat4_2, sceneState.cameras[0].position)
+        mat4.multiply(tempMat4_1, tempMat4_2, tempMat4_1)
+        setNodeTransform(app.cameraNode, tempMat4_1, sceneGraph)
+        Render.renderFrame(sceneState, sceneGraph, renderer, gpu)
       }
       requestAnimationFrame(renderFrame)
     }

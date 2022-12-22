@@ -179,7 +179,7 @@ export function projectToUnitSphere(p: Polyhedron): Polyhedron {
 
 export function testIcosphere(n: number) {
   const p = subdividedIcosahedron(n)
-  const m = polyhedronMesh(p, 3, false)
+  const m = polyhedronMesh(p, 4, true)
   m.label = `icosphere-${n}`
   console.log(JSON.stringify(m))
 }

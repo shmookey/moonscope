@@ -174,6 +174,7 @@ export async function create(
     bindGroupLayouts: [bindGroupLayout],
   })
   const pipeline = gpu.device.createRenderPipeline({
+    label: 'vis-pipeline',
     layout: pipelineLayout,
     vertex: {
       module: vertexShader,
@@ -339,6 +340,7 @@ export async function createSkyRenderer(visTexture: GPUTexture, gpu: GPUContext)
     bindGroupLayouts: [uniformBindGroupLayout],
   })
   const pipeline = gpu.device.createRenderPipeline({
+    label: 'sky-pipeline',
     layout: pipelineLayout,
     vertex: {
       module: vertexShader,

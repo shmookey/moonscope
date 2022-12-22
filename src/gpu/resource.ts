@@ -1,5 +1,5 @@
 import type {ResourceBundleDescriptor, TextureResourceDescriptor, MeshResourceDescriptor, Atlas, 
-  ResourceBundle, TextureResource, MeshResource, Vertex, XVertex, MeshStore} from "./types"
+  ResourceBundle, TextureResource, MeshResource, Vertex, XVertex, MeshStore, TextureRemapping} from "./types"
 import { addSubTexture, copyImageBitmapToSubTexture, copyImageToSubTexture } from "./atlas.js"
 import {VERTEX_SIZE} from "./constants.js"
 import {addMesh, getMeshById} from "./mesh.js"
@@ -53,10 +53,19 @@ export async function loadMeshResource(
       throw new Error(`Unknown mesh resource source type: ${descriptor.srcType}`)
     }
   }
+  if(descriptor.texRemap)
+    vertices = vertices.map(v => remapTextures(v, descriptor.texRemap))
   const vertexData = new Float32Array(vertices.map(vertex => remapUVs(vertex, atlas)).flat())
   const meshId = addMesh(name, vertexCount, vertexData, meshStore, device)
   const mesh = getMeshById(meshId, meshStore) // todo: remove
   return mesh
+}
+
+function remapTextures(vertex: XVertex, remapping: TextureRemapping): XVertex {
+  const texId = vertex[9]
+  if(texId in remapping)
+    vertex[9] = remapping[texId]
+  return vertex
 }
 
 /** Remap UV coordinates in an XVertex using an Atlas to produce a Vertex. */
