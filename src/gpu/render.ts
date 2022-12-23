@@ -153,11 +153,11 @@ export function renderView(
     gpu: GPUContext) {
 
   // Todo: only update if camera is dirty
-  getCameraViewMatrix(state.viewMatrix, cam)
+  //getCameraViewMatrix(state.viewMatrix, cam)
   state.uniformData.set(sceneGraph.views.default.viewMatrix, 0)
   state.uniformData.set(sceneGraph.views.default.projection, 16)
   gpu.device.queue.writeBuffer(state.mainUniformBuffer, 0, state.uniformData)
-  cam.isDirty = false
+  //cam.isDirty = false
 
   const commandEncoder = gpu.device.createCommandEncoder()
   const passEncoder = commandEncoder.beginRenderPass(pass)

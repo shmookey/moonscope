@@ -33,7 +33,7 @@ export function createSceneGraph(renderer: Renderer): SceneGraph {
   const rootNode: TransformNode = {
     nodeType:  'transform',
     label:     'root',
-    transform: defaultTransform,
+    transform: mat4.create() as Mat4,
     parent:    null,
     root:      null,
     children:  [],
@@ -111,7 +111,7 @@ export function createModelNode(
     nodeType:   'model',
     parent:     null,
     root:       null,
-    transform:  defaultTransform,
+    transform:  mat4.create() as Mat4,
     children:   [],
     instanceId: instanceId,
     modelName:  modelName,
@@ -137,7 +137,7 @@ export function createCameraNode(viewName: string | null, sceneGraph: SceneGraph
     nodeType:   'camera',
     parent:     null,
     root:       null,
-    transform:  defaultTransform,
+    transform:  mat4.create() as Mat4,
     children:   [],
     view:       view,
   }
@@ -147,6 +147,18 @@ export function createCameraNode(viewName: string | null, sceneGraph: SceneGraph
   return node
 }
 
+/** Create a transform node. */
+export function createTransformNode(sceneGraph: SceneGraph): Node {
+  const node: TransformNode = {
+    nodeType:   'transform',
+    parent:     null,
+    root:       null,
+    transform:  mat4.create() as Mat4,
+    children:   [],
+  }
+  sceneGraph.nodes.push(node)
+  return node
+}
 
 /** Register a model with the scene graph. */
 export function registerSceneGraphModel(
@@ -273,7 +285,7 @@ export function setNodeTransform(node: Node, transform: Mat4, sceneGraph: SceneG
  * ancestors.
  */
 function updateNodeTransform(node: Node, transform: Mat4, sceneGraph: SceneGraph): void {
-  mat4.mul(transform, node.transform, transform) // transform is now model matrix
+  mat4.mul(transform, transform, node.transform) // transform is now model matrix
   if(node.nodeType === 'model') {
     const { instanceAllocator, device } = sceneGraph.renderer
     updateInstanceData(transform, node.instanceId, instanceAllocator, device)

@@ -23,6 +23,7 @@ export function createCamera(aspect: number): Camera {
  */
 export function createFirstPersonCamera(): FirstPersonCamera {
   const position = vec3.create()
+  position[1] = 2
   return {
     position,
     roll: 0,

@@ -77,9 +77,15 @@ export function polyhedronMesh(
   const vertices: XVertex[] = p.faces.flatMap(vertices => vertices.map((vId,i) => {
     const [x, y, z] = p.vertices[vId]
     const [nx, ny, nz] = normals[vId]
-    const [u, v] = useLatLon 
-      ? [atan2(y, sqrt(x*x + z*z)), atan2(z, x)]
-      : uvMap[i]
+    let [u, v] = uvMap[i]
+
+    if(useLatLon) {
+      // todo: are these even right??
+      // todo also: maybe just figure out proper sphere-mapped UVs instead of
+      // this hacky lat/lon thing
+      u = atan2(y, sqrt(x*x + z*z))  // latitude
+      v = atan2(z, x)                // longitude
+    }
 
     return [x, y, z, 1, u, v, nx, ny, nz, textureId] as XVertex
   }))

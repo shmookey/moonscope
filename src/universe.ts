@@ -1,6 +1,6 @@
 /** universe.ts -- Celestial bodies and their orbits. */
 
-import type {Vec3, Quat} from './gpu/types';
+import type {Vec3, Quat, Node} from './gpu/types';
 import {vec3, mat4, quat} from '../node_modules/gl-matrix/esm/index.js'
 import {random, randomUnitVec3, randomUnitQuat} from './util.js';
 
@@ -9,7 +9,7 @@ export type Celestial  = {
   position: Vec3,      // Absolute position in space
   orientation: Quat,   // Absolute rotation
   size: number,        // Size scale factor
-  instanceId?: number, // Instance ID, if this is a GPU object
+  node?: Node,         // Scene graph node
 }
 
 /** Body in the solar system. */
@@ -20,7 +20,7 @@ export type LocalBody = {
   position: Vec3,      // Absolute position in space
   orientation: Quat,   // Absolute rotation
   rotation: number,    // Rotation per second
-  instanceId?: number, // Instance ID, if this is a GPU object
+  node?: Node,         // Scene graph node
 }
 
 export type Universe = {
@@ -75,7 +75,7 @@ export function generateCelestialBody(): Celestial {
   const orientation = randomUnitQuat()
   const position = randomUnitVec3()
   vec3.scale(position, position, distance)
-  return { position, orientation, size, instanceId: null }
+  return { position, orientation, size }
 }
 
 /** Write a celestial body's model matrix to a mat4. */
