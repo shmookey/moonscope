@@ -1,5 +1,4 @@
-import type {GPUContext} from "./gpu.js"
-import type {Camera, CameraNode, DrawCallDescriptor, FirstPersonCamera, Mat4, ModelNode, Node, Renderer, Scene, SceneGraph, TransformNode, View, ViewDescriptor} from "./types"
+import type {Camera, CameraNode, DrawCallDescriptor, FirstPersonCamera, GPUContext, Mat4, Model, ModelNode, Node, Renderer, Scene, SceneGraph, TransformNode, View, ViewDescriptor} from "./types"
 import * as Skybox from './skybox.js'
 import {createCamera, createFirstPersonCamera, getCameraViewMatrix} from './camera.js'
 import { mat4 } from 'gl-matrix'
@@ -164,6 +163,7 @@ export function createTransformNode(sceneGraph: SceneGraph): Node {
 export function registerSceneGraphModel(
     name: string,
     meshName: string,
+    pipelineName: string,
     maxInstances: number,
     sceneGraph: SceneGraph): void {
 
@@ -172,12 +172,14 @@ export function registerSceneGraphModel(
   const allocation = instanceAllocator.allocations[allocationId]
   const mesh = getMeshByName(meshName, meshStore)
   const drawCallId = sceneGraph.nextDrawCallId
-  const model = { 
+  const pipeline = sceneGraph.renderer.pipelines[pipelineName]
+  const model: Model = { 
     id: 0, 
     name, 
     meshId: mesh.id, 
     allocationId,
     drawCallId,
+    pipelineName,
   }
   const drawCall: DrawCallDescriptor = {
     id:              drawCallId,
@@ -189,7 +191,7 @@ export function registerSceneGraphModel(
     instancePointer: allocation.instanceIndex * 4,
     instanceCount:   0,
     bindGroup:       mainBindGroup,
-    pipeline:        mainPipeline,
+    pipeline:        pipeline,
   }
   
   
@@ -238,20 +240,20 @@ export function attachNode(
 function setupNewlyAttachedNode(node: Node, transform: Mat4, sceneGraph: SceneGraph): void {
   if(node.root || !node.parent || !node.parent.root)
     throw new Error('Invalid node attachment state.')
-
-  mat4.mul(transform, node.transform, transform) // transform is now model matrix
-
+  node.root = node.parent.root
+  mat4.mul(transform, transform, node.transform) // transform is now model matrix
+  
   if(node.nodeType === 'model') { 
     const { instanceAllocator, device } = sceneGraph.renderer
-    updateInstanceData(transform, node.instanceId, instanceAllocator, device)
     activateInstance(node.instanceId, instanceAllocator, device)
+    updateInstanceData(transform, node.instanceId, instanceAllocator, device)
     const drawCall = sceneGraph.drawCalls[node.drawCallId]
     drawCall.instanceCount++
   } else if(node.nodeType === 'camera' && node.view) {
     mat4.invert(node.view.viewMatrix, transform)
   }
 
-  node.root = node.parent.root
+  
 
   for(const child of node.children) {
     setupNewlyAttachedNode(child, mat4.clone(transform) as Mat4, sceneGraph)

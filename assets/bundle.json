@@ -34,47 +34,37 @@
   ],
   "meshes": [
     {
-      "name":        "cube",
-      "vertexCount": 36,
-      "src":         "/assets/mesh/cube.json",
-      "srcType":     "json"
-    },
-    {
       "name":        "ground",
       "vertexCount": 6,
       "src":         "/assets/mesh/ground.json",
-      "srcType":     "json"
-    },{
-      "name":        "tetrahedron",
-      "vertexCount": 12,
-      "src":         "/assets/mesh/tetrahedron.json",
-      "srcType":     "json"
-    },{
-      "name":        "icosahedron",
-      "vertexCount": 60,
-      "src":         "/assets/mesh/icosahedron.json",
-      "srcType":     "json"
-    },{
-      "name":        "icosphere-1",
-      "vertexCount": 240,
-      "src":         "/assets/mesh/icosphere-1.json",
-      "srcType":     "json"
-    },{
-      "name":        "icosphere-2",
-      "vertexCount": 960,
-      "src":         "/assets/mesh/icosphere-2.json",
-      "srcType":     "json"
-    },{
-      "name":        "icosphere-3",
-      "vertexCount": 3840,
-      "src":         "/assets/mesh/icosphere-3.json",
       "srcType":     "json"
     },{
       "name":        "moon",
       "vertexCount": 960,
       "src":         "/assets/mesh/icosphere-2-latlon.json",
       "srcType":     "json",
-      "texRemap":    { "4": 4 }
+      "texRemap":    { "4": 4 },
+      "prescale":    173.74
+    },{
+      "name":        "earth",
+      "vertexCount": 15360,
+      "src":         "/assets/mesh/icosphere-4.json",
+      "srcType":     "json",
+      "prescale":    637.1,
+      "texRemap":    { "4": 3 }
+    },{
+      "name":        "sun",
+      "vertexCount": 960,
+      "src":         "/assets/mesh/icosphere-2.json",
+      "srcType":     "json",
+      "texRemap":    { "3": 2 },
+      "prescale":    69.6340
+    },{
+      "name":        "star",
+      "vertexCount": 12,
+      "src":         "/assets/mesh/tetrahedron.json",
+      "srcType":     "json",
+      "prescale":    1
     }
   ]
 }

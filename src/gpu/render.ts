@@ -1,7 +1,6 @@
 //import {vec3} from "gl-matrix"
-import type {GPUContext} from './gpu'
-import type {Atlas, Camera, FirstPersonCamera, DrawCallDescriptor, Entity, InstanceAllocator, Mat4, Renderable, ResourceBundle, MeshStore, Model, Scene, Renderer, SceneGraph} from './types'
-import * as PipelineMgr from './pipeline.js'
+import type {Atlas, Camera, FirstPersonCamera, DrawCallDescriptor, Entity, InstanceAllocator, GPUContext, Mat4, Renderable, ResourceBundle, MeshStore, Model, Scene, Renderer, SceneGraph} from './types'
+import {createMainBindGroup, createMainBindGroupLayout, createMainPipeline, createMainPipelineLayout, createMainSampler, createMainUniformBuffer, createPipeline, loadShader} from './pipeline.js'
 import {mat4} from 'gl-matrix'
 import {createAtlas} from './atlas.js'
 import {loadResourceBundle} from './resource.js'
@@ -33,26 +32,28 @@ export async function createRenderer(
   const meshStore = createMeshStore(vertexStorageCapacity, VERTEX_SIZE, gpu.device)
   const bundle = await loadResourceBundle('/assets/bundle.json', atlas, meshStore, gpu.device)
   const instanceAllocator = createInstanceAllocator(gpu.device, instanceStorageCapacity)
-  const mainBindGroupLayout = PipelineMgr.createMainBindGroupLayout(gpu.device)
-  const mainSampler = PipelineMgr.createMainSampler(gpu.device)
-  const mainUniformBuffer = PipelineMgr.createMainUniformBuffer(gpu.device)
-  const mainBindGroup = PipelineMgr.createMainBindGroup(
+  const mainBindGroupLayout = createMainBindGroupLayout(gpu.device)
+  const mainSampler = createMainSampler(gpu.device)
+  const mainUniformBuffer = createMainUniformBuffer(gpu.device)
+  const mainBindGroup = createMainBindGroup(
     mainBindGroupLayout, 
     mainUniformBuffer, 
     instanceAllocator.storageBuffer,
     atlas,
     mainSampler,
     gpu.device)
-  const pipelineLayout = PipelineMgr.createMainPipelineLayout(
+  const pipelineLayout = createMainPipelineLayout(
     mainBindGroupLayout,
     gpu.device)
-  const mainPipeline = await PipelineMgr.createMainPipeline(
+  const mainPipeline = await createMainPipeline(
     pipelineLayout,
     presentationFormat,
     gpu.device)
   const depthTexture = gpu.device.createTexture({
+    label: 'main-depth-texture',
     size: outputSize,
     format: 'depth24plus',
+    sampleCount: 4,
     usage: GPUTextureUsage.RENDER_ATTACHMENT,
   })
   const depthTextureView = depthTexture.createView()
@@ -79,6 +80,10 @@ export async function createRenderer(
     device: gpu.device,
     depthTexture,
     depthTextureView,
+    context: gpu,
+    pipelines: {
+      default: mainPipeline
+    },
   }
 }
 
@@ -86,62 +91,62 @@ export async function createRenderer(
  * 
  * Returns the model id.
  */
-export function registerModel(
-    name: string,
-    meshName: string,
-    maxInstances: number,
-    state: Renderer): number {
-  const id = state.nextModelId
-  const allocationId = registerAllocation(maxInstances, state.instanceAllocator)
-  const mesh = getMeshByName(meshName, state.meshStore)
-  const drawCallId = state.nextDrawCallId
-  const model = { 
-    id, 
-    name, 
-    meshId: mesh.id, 
-    allocationId,
-    drawCallId,
-  }
-  const drawCall: DrawCallDescriptor = {
-    id:              drawCallId,
-    label:           `DrawCall#${drawCallId}=${name}`,
-    vertexBuffer:    state.meshStore.vertexBuffer,
-    vertexPointer:   mesh.vertexPointer,
-    vertexCount:     mesh.vertexCount,
-    instanceBuffer:  state.instanceAllocator.instanceBuffer,
-    instancePointer: state.instanceAllocator.allocations[allocationId].instanceIndex * 4,
-    instanceCount:   0,
-    bindGroup:       state.mainBindGroup,
-    pipeline:        state.mainPipeline,
-  }
-
-  state.nextModelId++
-  state.nextDrawCallId++
-  state.models.push(model)
-  state.drawCalls.push(drawCall)
-  return id
-}
+//export function registerModel(
+//    name: string,
+//    meshName: string,
+//    maxInstances: number,
+//    state: Renderer): number {
+//  const id = state.nextModelId
+//  const allocationId = registerAllocation(maxInstances, state.instanceAllocator)
+//  const mesh = getMeshByName(meshName, state.meshStore)
+//  const drawCallId = state.nextDrawCallId
+//  const model = { 
+//    id, 
+//    name, 
+//    meshId: mesh.id, 
+//    allocationId,
+//    drawCallId,
+//  }
+//  const drawCall: DrawCallDescriptor = {
+//    id:              drawCallId,
+//    label:           `DrawCall#${drawCallId}=${name}`,
+//    vertexBuffer:    state.meshStore.vertexBuffer,
+//    vertexPointer:   mesh.vertexPointer,
+//    vertexCount:     mesh.vertexCount,
+//    instanceBuffer:  state.instanceAllocator.instanceBuffer,
+//    instancePointer: state.instanceAllocator.allocations[allocationId].instanceIndex * 4,
+//    instanceCount:   0,
+//    bindGroup:       state.mainBindGroup,
+//    pipeline:        state.mainPipeline,
+//  }
+//
+//  state.nextModelId++
+//  state.nextDrawCallId++
+//  state.models.push(model)
+//  state.drawCalls.push(drawCall)
+//  return id
+//}
 
 /** Create an instance of a model.
  * 
  * Returns the instance ID.
  */
-export function createInstance(
-    modelMatrix: Mat4,
-    modelId: number,
-    state: Renderer): number {
-  const model = state.models[modelId]
-  tempInstanceData.set(modelMatrix)
-  const instanceId = addInstance(
-    model.allocationId, 
-    tempInstanceData, 
-    state.device, 
-    state.instanceAllocator
-  )
-  const drawCall = state.drawCalls[model.drawCallId]
-  drawCall.instanceCount = state.instanceAllocator.allocations[model.allocationId].numInstances
-  return instanceId
-}
+//export function createInstance(
+//    modelMatrix: Mat4,
+//    modelId: number,
+//    state: Renderer): number {
+//  const model = state.models[modelId]
+//  tempInstanceData.set(modelMatrix)
+//  const instanceId = addInstance(
+//    model.allocationId, 
+//    tempInstanceData, 
+//    state.device, 
+//    state.instanceAllocator
+//  )
+//  const drawCall = state.drawCalls[model.drawCallId]
+//  drawCall.instanceCount = state.instanceAllocator.allocations[model.allocationId].numInstances
+//  return instanceId
+//}
 
 /** Render the scene from the view of a given camera. */
 export function renderView(
@@ -184,6 +189,8 @@ export function renderView(
     const {vertexBuffer, vertexPointer, instanceBuffer, instancePointer} = call 
     const verticesLength = call.vertexCount * VERTEX_SIZE
     const instancesLength = call.instanceCount * INSTANCE_INDEX_SIZE
+    passEncoder.setPipeline(call.pipeline)
+    passEncoder.setBindGroup(0, call.bindGroup)
     passEncoder.setVertexBuffer(0, vertexBuffer, vertexPointer, verticesLength)
     passEncoder.setVertexBuffer(1, instanceBuffer, instancePointer, instancesLength)
     passEncoder.draw(call.vertexCount, call.instanceCount, 0, 0)
@@ -195,7 +202,7 @@ export function renderView(
 
 // todo: don't pass in a scenegraph, make the scenegraph issue draw calls?
 export function renderFrame(scene: Scene, sceneGraph: SceneGraph, state: Renderer, gpu: GPUContext) {
-  (gpu.renderPassDescriptor as any).colorAttachments[0].view = gpu.context
+  (gpu.renderPassDescriptor as any).colorAttachments[0].resolveTarget = gpu.context
     .getCurrentTexture()
     .createView()
   gpu.renderPassDescriptor.depthStencilAttachment = {
@@ -212,3 +219,26 @@ export function renderFrame(scene: Scene, sceneGraph: SceneGraph, state: Rendere
   renderView(scene.cameras[0], scene, sceneGraph, state, gpu.renderPassDescriptor, gpu)
   gpu.renderPassDescriptor.depthStencilAttachment = undefined
 }
+
+export async function makePipeline(
+    name:               string,
+    vertexShaderPath:   string,
+    fragmentShaderPath: string,
+    renderer:           Renderer): Promise<void> {
+
+  if(renderer.pipelines[name])
+    throw new Error(`Pipeline ${name} already exists.`)
+
+  const vertexShader = await loadShader(vertexShaderPath, renderer.device)
+  const fragShader = await loadShader(fragmentShaderPath, renderer.device)
+  const pipeline = createPipeline(
+    name, 
+    vertexShader, 
+    fragShader, 
+    renderer.pipelineLayout, 
+    renderer.context.presentationFormat, 
+    renderer.device
+  )
+  renderer.pipelines[name] = pipeline
+}
+

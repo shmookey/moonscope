@@ -3,15 +3,11 @@ import * as Sky from './sky.js'
 import * as Skybox from './gpu/skybox.js'
 import * as Render from './gpu/render.js'
 import { createInputState } from './input.js'
-import { loadResourceBundle } from './gpu/resource.js'
-import { createAtlas, getLayerAsImageBitmap } from './gpu/atlas.js'
-import { createInstanceAllocator, registerAllocation, addInstance, updateInstanceData } from './gpu/instance.js'
-import {createInstance, registerModel} from './gpu/render.js'
+import { getLayerAsImageBitmap } from './gpu/atlas.js'
 import {vec3, mat4, quat} from 'gl-matrix'
-import {INSTANCE_BLOCK_FLOATS} from './gpu/constants.js'
-import type {DrawCallDescriptor, InstanceAllocator, Mat4, ResourceBundle, Vec3, Vec4, Renderer, SceneGraph, ViewDescriptor, Quat} from './gpu/types.js'
-import {applyFirstPersonCamera, getCameraViewMatrix, moveFirstPersonCameraForward, moveFirstPersonCameraRight, rotateFirstPersonCamera} from './gpu/camera.js'
-import {celestialBodyModelMatrix, generateUniverse, localBodyModelMatrix, Universe, updateUniverse} from './universe.js'
+import type {Mat4, Renderer, SceneGraph, ViewDescriptor, Quat} from './gpu/types.js'
+import {applyFirstPersonCamera, getCameraViewMatrix, moveFirstPersonCameraForward, moveFirstPersonCameraRight, moveFirstPersonCameraUp, moveFirstPersonCameraUpScale, rotateFirstPersonCamera} from './gpu/camera.js'
+import {celestialBodyModelMatrix, generateUniverse, Universe} from './universe.js'
 import {getMeshByName} from './gpu/mesh.js'
 import {attachNode, createCameraNode, createModelNode, createScene, createSceneGraph, createSceneView, createTransformNode, registerSceneGraphModel, setNodeTransform} from './gpu/scene.js'
 const { sin, cos, log, sqrt, min, max, random, PI } = Math
@@ -59,107 +55,111 @@ function* layerGen(): Iterator<Sky.LayerData> {
   }
 }
 
-function setInstanceModelMatrix(
-    modelMatrix: Mat4, 
-    instanceId: number, 
-    instanceAllocator: InstanceAllocator, 
-    device: GPUDevice) {
-  updateInstanceData(modelMatrix, instanceId, instanceAllocator, device, 0)
-}
-
-function setInstanceTextureBounds(
-    textureBounds: Vec4, 
-    instanceId: number, 
-    instanceAllocator: InstanceAllocator, 
-    device: GPUDevice) {
-  updateInstanceData(textureBounds, instanceId, instanceAllocator, device, 4*4*4)
-}
-
-function setInstanceFields(
-    modelMatrix: Mat4,
-    textureBounds: Vec4, 
-    instanceId: number, 
-    instanceAllocator: InstanceAllocator, 
-    device: GPUDevice) {
-  const buf = new Float32Array(4*4 + 4)
-  buf.set(modelMatrix)
-  buf.set(textureBounds, 4*4)
-  updateInstanceData(buf, instanceId, instanceAllocator, device, 4*4*4)
-}
-
-function setupScene(renderer: Renderer): void {
-  // Add ground plane
-  //const groundModelId = registerModel('ground', 'ground', 1, renderer)
-  //mat4.fromTranslation(tempMat4_1, vec3.fromValues(0,-2,0))
-  //const groundInstanceId = createInstance(tempMat4_1, groundModelId, renderer)
-
-  // Add cube
-  //const cubeModelId = registerModel('test-object', 'moon', 1, renderer)
-  //mat4.fromTranslation(tempMat4_1, vec3.fromValues(-1,1.5,-3))
-  //const cubeInstanceId = createInstance(tempMat4_1, cubeModelId, renderer)
-}
-
 function setupSceneGraph(renderer: Renderer): SceneGraph {
+  const universe = generateUniverse(0)
+  app.universe = universe
+
   const sceneGraph = createSceneGraph(renderer)
   const viewDescriptor: ViewDescriptor = {
     type:   'perspective',
     fovy:   PI / 2,
     aspect: renderer.outputSize[0] / renderer.outputSize[1],
-    near:   0.1,
+    near:   0.001,
     far:    Infinity,
   }
   createSceneView('default', viewDescriptor, sceneGraph)
-  registerSceneGraphModel('sphere', 'icosphere-2', 100, sceneGraph)
-  registerSceneGraphModel('ground', 'ground', 10, sceneGraph)
-  registerSceneGraphModel('celestial-body', 'icosahedron', 1000, sceneGraph)
-  registerSceneGraphModel('local-body', 'icosphere-2', 100, sceneGraph)
+  registerSceneGraphModel('sun',            'sun',         'default', 1,    sceneGraph)
+  registerSceneGraphModel('earth',          'earth',       'default', 1,    sceneGraph)
+  registerSceneGraphModel('moon',           'moon',        'default', 1,    sceneGraph)
+  registerSceneGraphModel('star',           'star',        'default', 1000, sceneGraph)
+  registerSceneGraphModel('ground',         'ground',      'autogrid', 10,   sceneGraph)
+  registerSceneGraphModel('sphere',         'earth',       'autogrid-sphere',   1,    sceneGraph)
 
-  const groundNode = createModelNode('ground', sceneGraph)
-  app.groundNode = groundNode
+  // Set up sun
+  const sunNode = createModelNode('sun', sceneGraph)
+  const sunRadius = universe.localBodies.sun.radius
+  //mat4.fromTranslation(tempMat4_1, universe.localBodies.sun.position)
+  //setNodeTransform(sunNode, tempMat4_1, sceneGraph)
+
+  // Set up earth
+  const earthNode = createTransformNode(sceneGraph)
+  const earthRadius = universe.localBodies.earth.radius
+  mat4.fromTranslation(tempMat4_1, universe.localBodies.earth.position)
+  setNodeTransform(earthNode, tempMat4_1, sceneGraph)
+  attachNode(earthNode, sunNode, sceneGraph)
+  app.earthNode = earthNode
+
+  // Set up moon
+  const moonNode = createModelNode('moon', sceneGraph)
+  const moonRadius = universe.localBodies.moon.radius
+  mat4.fromTranslation(tempMat4_1, universe.localBodies.moon.position)
+  setNodeTransform(moonNode, tempMat4_1, sceneGraph)
+  attachNode(moonNode, earthNode, sceneGraph)
+  app.moonNode = moonNode
+
+  // Set up ground-level view
+  const groundNode = createTransformNode(sceneGraph)
   const cameraNode = createCameraNode('default', sceneGraph)
-  attachNode(cameraNode, groundNode, sceneGraph)
+  app.cameraNode = cameraNode
+  
+  mat4.fromTranslation(tempMat4_1, [0, 0, 0]) //-earthRadius])
+  //mat4.rotateX(tempMat4_1,  tempMat4_1, -PI/2)
+  setNodeTransform(groundNode, tempMat4_1, sceneGraph)
+  
+  
 
+  // Test sphere
   const sphereNode = createModelNode('sphere', sceneGraph)
-  //mat4.fromTranslation(tempMat4_1, vec3.fromValues(0,0,-4))
+  mat4.fromTranslation(tempMat4_1, [0, 1, 0])
+  mat4.scale(tempMat4_1, tempMat4_1, [0.01, 0.01, 0.01])
   setNodeTransform(sphereNode, tempMat4_1, sceneGraph)
-  attachNode(sphereNode, groundNode, sceneGraph)
+  
+  attachNode(sphereNode, sceneGraph.root, sceneGraph)
+  app.sphereNode = sphereNode
 
+  //mat4.fromTranslation(tempMat4_1, [0, 0, 0]) //-earthRadius])
+  //mat4.rotateX(tempMat4_1,  tempMat4_1, -PI/2)
+  //setNodeTransform(groundNode, tempMat4_1, sceneGraph)
+  attachNode(cameraNode, sceneGraph.root, sceneGraph)
 
-  const universe = generateUniverse(1000)
-  app.universe = universe
+  attachNode(groundNode, earthNode, sceneGraph)
+  
 
   const cosmosNode = createTransformNode(sceneGraph)
   for(let body of universe.celestialBodies) {
-    const bodyNode = createModelNode('celestial-body', sceneGraph)
+    const bodyNode = createModelNode('star', sceneGraph)
     celestialBodyModelMatrix(body, tempMat4_1)
     setNodeTransform(bodyNode, tempMat4_1, sceneGraph)
     body.node = bodyNode
     attachNode(bodyNode, cosmosNode, sceneGraph)
   }
-
-  attachNode(cosmosNode, sceneGraph.root, sceneGraph) 
-  attachNode(groundNode, sceneGraph.root, sceneGraph)
-  return sceneGraph
-}
-
-
-function setupUniverse(sceneGraph: SceneGraph): void {
   
-
-  //const planetModel = renderer.models[planetModelId]
-  //universe.localBodiesAllocId = planetModel.allocationId
-  //for(let body of universe.localBodies) {
-  //  localBodyModelMatrix(body, tempMat4_1)
-  //  body.instanceId = createInstance(tempMat4_1, planetModelId, renderer)
-  //}
-
+  attachNode(cosmosNode, sceneGraph.root, sceneGraph) 
+  attachNode(sunNode, sceneGraph.root, sceneGraph)
+   
+  return sceneGraph
 }
 
 /** return true to force a repaint. */
 function updateWorldState(dT: number, sceneGraph: SceneGraph): boolean {
-  mat4.fromXRotation(tempMat4_1, dT * 0.00003)
-  mat4.multiply(app.groundNode.transform, tempMat4_1, app.groundNode.transform)
-  setNodeTransform(app.groundNode, app.groundNode.transform, sceneGraph)
+  const amount = dT * 0.005
+  const universe: Universe = app.universe
+  mat4.fromXRotation(tempMat4_1, -amount * universe.localBodies.earth.angularVelocity)
+  mat4.multiply(tempMat4_1, app.earthNode.transform, tempMat4_1)
+  //setNodeTransform(app.earthNode, tempMat4_1, sceneGraph)
+
+  mat4.fromXRotation(tempMat4_1, -amount)
+  mat4.multiply(tempMat4_1, tempMat4_1, app.moonNode.transform)
+  //setNodeTransform(app.moonNode, tempMat4_1, sceneGraph)
+
+  mat4.fromYRotation(tempMat4_1, amount*1)
+  mat4.multiply(tempMat4_1, app.sphereNode.transform, tempMat4_1)
+  //setNodeTransform(app.sphereNode, tempMat4_1, sceneGraph)
+
+  mat4.fromYRotation(tempMat4_1, amount*1)
+  mat4.multiply(tempMat4_1, app.cameraNode.transform, tempMat4_1)
+  setNodeTransform(app.cameraNode, tempMat4_1, sceneGraph)
+
   return true
 }
 
@@ -189,12 +189,15 @@ async function main(): Promise<void> {
     gpu.presentationFormat, 
     gpu,
     5000,  // instance storage capacity
-    20000, // vertex storage capacity
+    40000, // vertex storage capacity
   )
   app.renderer = renderer
+  await Render.makePipeline('autogrid-sphere', '/shader/entity.vert.wgsl', '/shader/autogrid-sphere.frag.wgsl', renderer)
+  await Render.makePipeline('autogrid', '/shader/autogrid.vert.wgsl', '/shader/autogrid.frag.wgsl', renderer)
   const sceneState = await createScene(renderer.mainUniformBuffer, gpu)
   const sceneGraph = setupSceneGraph(renderer)
   const mainCamera = sceneGraph.views.default.camera
+  sceneState.firstPersonCamera.position[2] = 10
   app.sceneGraph = sceneGraph
   
 
@@ -259,9 +262,13 @@ async function main(): Promise<void> {
     document.body.append(container)
   }
 
+  const movementSpeed = 0.01
+  let lastTime = 0
+
   document.addEventListener('pointerlockchange', ev => {
     if(document.pointerLockElement == elems.canvas) {
       inputState.mouseCaptured = true
+      lastTime = performance.now()
       requestAnimationFrame(renderFrame)
     } else {
       inputState.mouseCaptured = false
@@ -276,22 +283,21 @@ async function main(): Promise<void> {
   app.visState = visState
   app.glm = { mat4, vec3, quat }
   
-  const movementSpeed = 0.004
-  let lastTime = 0
+  
   function renderFrame(currentTime: number): void {
     if(inputState.mouseCaptured) {
       const dt = currentTime - lastTime
       lastTime = currentTime
       let cameraMoved = true
-      let requireRepaint = false
+      let requireRepaint = true
 
-      updateUniverse(app.universe, currentTime)
+      //updateUniverse(app.universe, currentTime)
       requireRepaint = updateWorldState(dt, sceneGraph)
 
       // Handle mouse movement
       const [dx, dy] = inputState.mouseMovement
       if(dx != 0 || dy != 0) {
-        rotateFirstPersonCamera(0.001 * dy, 0.001 * dx, sceneState.firstPersonCamera)
+        rotateFirstPersonCamera(0.0001 * dy, 0.0001 * dx, sceneState.firstPersonCamera)
         applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
         inputState.mouseMovement[0] = 0
         inputState.mouseMovement[1] = 0
@@ -299,22 +305,39 @@ async function main(): Promise<void> {
       }
 
       // Handle keyboard movement
-      if(inputState.keyDown['KeyW'] || inputState.keyDown['ArrowUp']) {
-        moveFirstPersonCameraForward(-movementSpeed * dt, sceneState.firstPersonCamera)
-        //applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
+      if( inputState.keyDown['ArrowUp']) {
+        moveFirstPersonCameraForward(-movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
         cameraMoved = true
-      } else if(inputState.keyDown['KeyS'] || inputState.keyDown['ArrowDown']) {
-        moveFirstPersonCameraForward(movementSpeed * dt, sceneState.firstPersonCamera)
-        //applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
+      } else if( inputState.keyDown['ArrowDown']) {
+        moveFirstPersonCameraForward(movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
         cameraMoved = true
       }
-      if(inputState.keyDown['KeyA'] || inputState.keyDown['ArrowLeft']) {
-        moveFirstPersonCameraRight(-movementSpeed * dt, sceneState.firstPersonCamera)
-        //applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
+      if( inputState.keyDown['ArrowLeft']) {
+        moveFirstPersonCameraRight(-movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
         cameraMoved = true
-      } else if(inputState.keyDown['KeyD'] || inputState.keyDown['ArrowRight']) {
+      } else if( inputState.keyDown['ArrowRight']) {
+        moveFirstPersonCameraRight(movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
+        cameraMoved = true
+      }
+      if(inputState.keyDown['KeyW'] ) {
+        moveFirstPersonCameraForward(-movementSpeed * dt, sceneState.firstPersonCamera)
+        cameraMoved = true
+      } else if(inputState.keyDown['KeyS'] ) {
+        moveFirstPersonCameraForward(movementSpeed * dt, sceneState.firstPersonCamera)
+        cameraMoved = true
+      }
+      if(inputState.keyDown['KeyA'] ) {
+        moveFirstPersonCameraRight(-movementSpeed * dt, sceneState.firstPersonCamera)
+        cameraMoved = true
+      } else if(inputState.keyDown['KeyD']) {
         moveFirstPersonCameraRight(movementSpeed * dt, sceneState.firstPersonCamera)
-        //applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
+        cameraMoved = true
+      }
+      if(inputState.keyDown['KeyQ'] ) {
+        moveFirstPersonCameraUpScale(-movementSpeed * dt * 0.1, sceneState.firstPersonCamera)
+        cameraMoved = true
+      } else if(inputState.keyDown['KeyE']) {
+        moveFirstPersonCameraUpScale(movementSpeed * dt * 0.1, sceneState.firstPersonCamera)
         cameraMoved = true
       }
       if(cameraMoved || requireRepaint) {
@@ -357,11 +380,3 @@ function initCanvas(): HTMLCanvasElement {
 }
 
 window.addEventListener('load', main)
-
-
-type Colour = [number, number, number]
-
-function* colourGen(): Generator<Colour> {
-  let [r,g,b] = [0,0,0]
-  yield [r,g,b]
-}

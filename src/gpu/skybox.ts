@@ -1,6 +1,5 @@
-import type {GPUContext} from './gpu'
 import {loadShader} from './gpu.js'
-import type {SkyboxState} from './types'
+import type {GPUContext, SkyboxState} from './types'
 
 const VERTICES = [
   // front
@@ -53,6 +52,7 @@ export async function create(uniformBuffer: GPUBuffer, gpu: GPUContext): Promise
   const vertexData = new Float32Array(VERTICES)
   
   const vertexBuffer = gpu.device.createBuffer({
+    label: 'skybox-vertex-buffer',
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, 
     size: vertexData.byteLength
   })
@@ -64,6 +64,7 @@ export async function create(uniformBuffer: GPUBuffer, gpu: GPUContext): Promise
   const fragShader = await loadShader('/shader/skybox.frag.wgsl', gpu)
 
   const texture = gpu.device.createTexture({
+    label:     'skybox-texture',
     size:      [1024, 1024, 6],
     dimension: '2d',
     format:    'rgba8unorm',
@@ -72,6 +73,7 @@ export async function create(uniformBuffer: GPUBuffer, gpu: GPUContext): Promise
   })
 
   const uniformBindGroupLayout = gpu.device.createBindGroupLayout({
+    label: 'skybox-uniform-bind-group-layout',
     entries: [{
       binding: 0, 
       visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
@@ -87,6 +89,7 @@ export async function create(uniformBuffer: GPUBuffer, gpu: GPUContext): Promise
     }]
   })
   const pipelineLayout = gpu.device.createPipelineLayout({
+    label: 'skybox-pipeline-layout',
     bindGroupLayouts: [uniformBindGroupLayout],
   })
   const pipeline = gpu.device.createRenderPipeline({
@@ -120,13 +123,18 @@ export async function create(uniformBuffer: GPUBuffer, gpu: GPUContext): Promise
       depthCompare: 'less',
       format: 'depth24plus',
     },
+    multisample: {
+      count: 4,
+    },
   })
   const sampler = gpu.device.createSampler({
+    label: 'skybox-sampler',
     magFilter: 'linear',
     minFilter: 'linear',
   })
   
   const uniformBindGroup = gpu.device.createBindGroup({
+    label: 'skybox-uniform-bind-group',
     layout: uniformBindGroupLayout,
     entries: [
       { binding: 0, resource: { buffer: uniformBuffer } }, 

@@ -14,7 +14,7 @@ struct Storage {
 @fragment
 fn main(
   @location(0)                    uv:           vec2<f32>,
-  @location(1)                    normal:       vec3<f32>,
+  @location(1)  @interpolate(perspective)                  normal:       vec3<f32>,
   @location(2)                    worldPos:     vec3<f32>,
   @location(3) @interpolate(flat) textureLayer: i32,
   @location(4) @interpolate(flat) instanceSlot: u32,

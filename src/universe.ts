@@ -19,39 +19,57 @@ export type LocalBody = {
   mass: number,        // Mass in kg
   position: Vec3,      // Absolute position in space
   orientation: Quat,   // Absolute rotation
-  rotation: number,    // Rotation per second
+  angularVelocity: number,    // Rotation per second
   node?: Node,         // Scene graph node
+  orbitalRate: number // Orbital rate in radians per second
 }
 
 export type Universe = {
   celestialBodies: Celestial[],  // Celestial bodies in the universe
-  localBodies: LocalBody[],      // Bodies in the solar system  
+  localBodies: { [name: string]: LocalBody },      // Bodies in the solar system  
   lastTick: number,              // Last time the universe state was updated
   localBodiesAllocId?: number,   // Instances allocation ID for local bodies
 }
 
-const EARTH_RADIUS = 6.371
-const MIN_DIST     = 5000
-const MAX_DIST     = 20000
-const MIN_SIZE     = 5
-const MAX_SIZE     = 10
+const SCALE = 1/1000
+const EARTH_RADIUS    =      637.1    // 6371 km
+const SUN_RADIUS      =    69.6340    // 696,340 km
+const MOON_RADIUS     =      173.74  // 1737.4 km
+const DIST_EARTH_SUN  = 1471.50000    // 147.15 million km
+const DIST_EARTH_MOON =    5*384.400    // 384,400 km
+const MIN_DIST        = DIST_EARTH_SUN * 3000
+const MAX_DIST        = DIST_EARTH_SUN * 30000
+const MIN_SIZE        = EARTH_RADIUS * 1
+const MAX_SIZE        = EARTH_RADIUS * 10
 
 const SUN: LocalBody = {
   name: 'Sun',
-  radius: 695.700,
+  radius: SUN_RADIUS,
   mass: 1.989e30,
-  position: [0, 1000, -10000],
+  position: [0, 0, 0],
   orientation: quat.create(),
-  rotation: 0,
+  angularVelocity: 0,
+  orbitalRate: 0,
 }
 
 const MOON: LocalBody = {
   name: 'Moon',
-  radius: 1,
+  radius: MOON_RADIUS,
   mass: 1,
-  position: [1.5, 1.5, -3],
+  position: [0, 0, DIST_EARTH_MOON], // relative to earth
   orientation: quat.create(),
-  rotation: 1,
+  angularVelocity: 0,
+  orbitalRate: 1,
+}
+
+const EARTH: LocalBody = {
+  name: 'Earth',
+  radius: EARTH_RADIUS,
+  mass: 5.972e24,
+  position: [0, 0, DIST_EARTH_SUN], // relative to sun
+  orientation: quat.create(),
+  angularVelocity: 1,
+  orbitalRate: 0.1,
 }
 
 
@@ -59,7 +77,11 @@ const MOON: LocalBody = {
 export function generateUniverse(numObjects: number): Universe {
   const universe: Universe = {
     celestialBodies: [],
-    localBodies: [SUN, MOON],
+    localBodies: {
+      earth: EARTH, 
+      sun:   SUN, 
+      moon:  MOON
+    },
     lastTick: performance.now(),
   }
   for (let i = 0; i < numObjects; i++) {
@@ -96,15 +118,4 @@ export function localBodyModelMatrix(body: LocalBody, out: mat4): mat4 {
     body.position,
     [body.radius, body.radius, body.radius]
   )
-}
-
-/** Update the universe state. */
-export function updateUniverse(universe: Universe, time: number): void {
-  const dt = (time - universe.lastTick) / 1000
-  universe.lastTick = time
-  for (const body of universe.localBodies) {
-    const rotation = quat.create()
-    quat.rotateZ(rotation, rotation, body.rotation * dt)
-    quat.multiply(body.orientation, body.orientation, rotation)
-  }
 }

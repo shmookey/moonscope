@@ -55,10 +55,17 @@ export async function loadMeshResource(
   }
   if(descriptor.texRemap)
     vertices = vertices.map(v => remapTextures(v, descriptor.texRemap))
+  if('prescale' in descriptor)
+    vertices = vertices.map(v => prescaleVertex(v, descriptor.prescale))
   const vertexData = new Float32Array(vertices.map(vertex => remapUVs(vertex, atlas)).flat())
   const meshId = addMesh(name, vertexCount, vertexData, meshStore, device)
   const mesh = getMeshById(meshId, meshStore) // todo: remove
   return mesh
+}
+
+function prescaleVertex(vertex: XVertex, scale: number): XVertex {
+  const [vx,vy,vz,w,u,v,nx,ny,nz,textureId] = vertex
+  return [vx * scale, vy * scale, vz * scale, w, u, v, nx, ny, nz, textureId]
 }
 
 function remapTextures(vertex: XVertex, remapping: TextureRemapping): XVertex {

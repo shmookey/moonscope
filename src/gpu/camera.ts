@@ -13,7 +13,7 @@ export function createCamera(aspect: number): Camera {
   const position = vec3.create()
   const orientation = quat.create()
   const projection = mat4.create()
-  mat4.perspectiveZO(projection, PI/2, aspect, 0.1, Infinity)
+  mat4.perspectiveZO(projection, PI/2, aspect, 0.001, Infinity)
   return {isDirty: true, projection, position, orientation}
 }
 
@@ -23,7 +23,7 @@ export function createCamera(aspect: number): Camera {
  */
 export function createFirstPersonCamera(): FirstPersonCamera {
   const position = vec3.create()
-  position[1] = 2
+  position[1] = 1
   return {
     position,
     roll: 0,
@@ -86,8 +86,8 @@ export function rotateFirstPersonCamera(pitch: number, yaw: number, fpCamera: Fi
 /** Move a first person camera in the forward/backwards direction. */
 export function moveFirstPersonCameraForward(dist: number, fpCamera: FirstPersonCamera): void {
   const {position, yaw} = fpCamera
-  const dx = dist * sin(yaw)
-  const dz = dist * cos(yaw)
+  const dx = dist * sin(yaw) * position[1] * 0.1
+  const dz = dist * cos(yaw) * position[1] * 0.1
   position[0] -= dx
   //position[1] += dy
   position[2] += dz
@@ -96,8 +96,18 @@ export function moveFirstPersonCameraForward(dist: number, fpCamera: FirstPerson
 /** Move a first person camera in the left/right direction. */
 export function moveFirstPersonCameraRight(dist: number, fpCamera: FirstPersonCamera): void {
   const {position, yaw} = fpCamera
-  const dx = dist * cos(yaw)
-  const dz = dist * sin(yaw)
+  const dx = dist * cos(yaw) * position[1] * 0.1
+  const dz = dist * sin(yaw) * position[1] * 0.1
   position[0] += dx
   position[2] += dz
+}
+
+/** Move a first person camera in the up/down direction. */
+export function moveFirstPersonCameraUp(dist: number, fpCamera: FirstPersonCamera): void {
+  fpCamera.position[1] += dist
+}
+
+/** Move a first person camera in the up/down direction by a factor. */
+export function moveFirstPersonCameraUpScale(dist: number, fpCamera: FirstPersonCamera): void {
+  fpCamera.position[1] *= 1 + dist
 }

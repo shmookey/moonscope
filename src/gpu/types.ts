@@ -93,13 +93,14 @@ export type MeshResource = {
 }
 
 export type MeshResourceDescriptor = {
-  id:          number,          // Mesh resource ID
-  name:        string,          // Human-readable name
-  vertexCount: number,          // Number of vertices in mesh
-  src?:        string,          // Path to file containing mesh data
-  srcType?:    string,          // 'json' or 'bin'
-  vertices?:   XVertex[],       // Optionally, vertex data can be provided directly
-  texRemap?: TextureRemapping, // Texture IDs remapping
+  id:          number,           // Mesh resource ID
+  name:        string,           // Human-readable name
+  vertexCount: number,           // Number of vertices in mesh
+  src?:        string,           // Path to file containing mesh data
+  srcType?:    string,           // 'json' or 'bin'
+  vertices?:   XVertex[],        // Optionally, vertex data can be provided directly
+  texRemap?:   TextureRemapping, // Texture IDs remapping
+  prescale?:   number,           // Scale factor applied to vertex positions
 }
 
 export type TextureRemapping = {
@@ -254,7 +255,8 @@ export type FirstPersonCamera = {
 
 /** Model record.
  * 
- * Links a mesh resource to an instance data allocation and draw call.
+ * Links a mesh resource to a render pipeline, instance data allocation and a 
+ * draw call.
  */
 export type Model = {
   id: number,             // Model ID
@@ -262,6 +264,7 @@ export type Model = {
   meshId: number,         // ID of mesh resource
   allocationId: number,   // ID of instance allocation
   drawCallId: number,     // ID of draw call
+  pipelineName: string,   // Name of pipeline to use for rendering
 }
 
 
@@ -461,4 +464,18 @@ export type Renderer = {
   depthTexture: GPUTexture,
   depthTextureView: GPUTextureView,
   outputSize: [number, number],
+  context: GPUContext,
+  pipelines: { [k: string]: GPURenderPipeline },
+}
+
+export type GPUContext = {
+  adapter: GPUAdapter;
+  device: GPUDevice;
+  context: GPUCanvasContext;
+  modules: { [k: string]: GPUShaderModule };
+  presentationFormat: GPUTextureFormat;
+  renderPassDescriptor: GPURenderPassDescriptor;
+  entities: Renderable[];
+  presentationSize: { width: number; height: number };
+  aspect: number;
 }

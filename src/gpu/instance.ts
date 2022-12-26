@@ -214,5 +214,6 @@ export function updateInstanceData(
     storageBuffer, 
     instance.storageSlot * INSTANCE_BLOCK_SIZE + offset, 
     instanceData.buffer)
+
 }
 

@@ -1,5 +1,4 @@
-import type {GPUContext} from './gpu/gpu'
-import type {Renderable} from './gpu/types'
+import type {GPUContext, Renderable} from './gpu/types'
 import {loadShader} from './gpu/gpu.js'
 import {
   Float16Array
@@ -145,6 +144,7 @@ export async function create(
   ])
   const instanceData = new Float32Array(ingestBufferSize / 4)
   const texture = gpu.device.createTexture({
+    label: 'vis-texture',
     size: [width, height, 1],
     format: VIS_TEXTURE_FORMAT,
     usage:
@@ -153,10 +153,12 @@ export async function create(
       GPUTextureUsage.RENDER_ATTACHMENT,
   })
   const vertexBuffer = gpu.device.createBuffer({
+    label: 'vis-vertex-buffer',
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, 
     size: vertexData.byteLength
   })
   const instanceBuffer = gpu.device.createBuffer({
+    label: 'vis-instance-buffer',
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     size: ingestBufferSize,
   })
@@ -164,6 +166,7 @@ export async function create(
   const fragmentShader = await loadShader('/shader/vis.frag.wgsl', gpu)
   
   const bindGroupLayout = gpu.device.createBindGroupLayout({
+    label: 'vis-bind-group-layout',
     entries: [{
       binding: 0, 
       visibility: GPUShaderStage.FRAGMENT,
@@ -171,6 +174,7 @@ export async function create(
     }]
   })
   const pipelineLayout = gpu.device.createPipelineLayout({
+    label: 'vis-pipeline-layout',
     bindGroupLayouts: [bindGroupLayout],
   })
   const pipeline = gpu.device.createRenderPipeline({
@@ -215,14 +219,17 @@ export async function create(
   })
 
   const exportBuffer = gpu.device.createBuffer({
+    label: 'vis-export-buffer',
     size: width * height * 2,
     usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
   })
   const uniformBuffer = gpu.device.createBuffer({
+    label: 'vis-uniform-buffer',
     size: 8,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   })
   const uniformBindGroup = gpu.device.createBindGroup({
+    label: 'vis-uniform-bind-group',
     layout: pipeline.getBindGroupLayout(0),
     entries: [{
       binding: 0,
@@ -235,8 +242,10 @@ export async function create(
   gpu.device.queue.writeBuffer(uniformBuffer, 0, uniformData)
 
   const renderPassDescriptor: GPURenderPassDescriptor = {
+    label: 'vis-render=pass',
     colorAttachments: [{
       view: texture.createView({
+        label: 'vis-texture-view',
         format: VIS_TEXTURE_FORMAT,
         dimension: '2d',
         mipLevelCount: 1,
@@ -298,12 +307,14 @@ export async function createSkyRenderer(visTexture: GPUTexture, gpu: GPUContext)
     -1,  1, 0, 1, 0, 1,
   ])
   const uniformBuffer = gpu.device.createBuffer({
+    label: 'sky-uniform-buffer',
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     size: 4,
   })
   const uniformData = new Uint32Array([0])
 
   const vertexBuffer = gpu.device.createBuffer({
+    label: 'sky-vertex-buffer',
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST, 
     size: vertexData.byteLength
   })
@@ -313,6 +324,7 @@ export async function createSkyRenderer(visTexture: GPUTexture, gpu: GPUContext)
   const fragShader = await loadShader('/shader/sky.frag.wgsl', gpu)
 
   const outputTexture = gpu.device.createTexture({
+    label: 'sky-texture',
     size: [1024, 1024, 1],
     format: 'rgba8unorm',
     usage:
@@ -322,6 +334,7 @@ export async function createSkyRenderer(visTexture: GPUTexture, gpu: GPUContext)
   })
 
   const uniformBindGroupLayout = gpu.device.createBindGroupLayout({
+    label: 'sky-bind-group-layout',
     entries: [{
       binding: 0, 
       visibility: GPUShaderStage.FRAGMENT,
@@ -337,6 +350,7 @@ export async function createSkyRenderer(visTexture: GPUTexture, gpu: GPUContext)
     }]
   })
   const pipelineLayout = gpu.device.createPipelineLayout({
+    label: 'sky-pipeline-layout',
     bindGroupLayouts: [uniformBindGroupLayout],
   })
   const pipeline = gpu.device.createRenderPipeline({
@@ -365,18 +379,26 @@ export async function createSkyRenderer(visTexture: GPUTexture, gpu: GPUContext)
       topology: 'triangle-list',
       cullMode: 'back',
     },
+    multisample: {
+      count: 1,
+    },
   })
   const sampler = gpu.device.createSampler({
+    label: 'sky-sampler',
     magFilter: 'linear',
     minFilter: 'linear',
   })
   
   const uniformBindGroup = gpu.device.createBindGroup({
+    label: 'sky-bind-group',
     layout: uniformBindGroupLayout,
     entries: [
       { binding: 0, resource: { buffer: uniformBuffer } }, 
       { binding: 1, resource: sampler }, 
-      { binding: 2, resource: visTexture.createView({ format: VIS_TEXTURE_FORMAT }) },
+      { binding: 2, resource: visTexture.createView({ 
+        label: 'sky-vis-texture-view',
+        format: VIS_TEXTURE_FORMAT 
+      }) },
     ]
   })
 
@@ -394,6 +416,7 @@ export async function createSkyRenderer(visTexture: GPUTexture, gpu: GPUContext)
 
 export function renderSkyToTexture(state: Renderable, gpu: GPUContext) {
   const renderPassDescriptor: GPURenderPassDescriptor = {
+    label: 'sky-render-to-texture-pass',
     colorAttachments: [{
       view: state.outputTexture.createView({
         format: 'rgba8unorm',

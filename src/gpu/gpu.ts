@@ -1,16 +1,4 @@
-import type {Renderable} from './types'
-
-export type GPUContext = {
-  adapter: GPUAdapter;
-  device: GPUDevice;
-  context: GPUCanvasContext;
-  modules: { [k: string]: GPUShaderModule };
-  presentationFormat: GPUTextureFormat;
-  renderPassDescriptor: GPURenderPassDescriptor;
-  entities: Renderable[];
-  presentationSize: { width: number; height: number };
-  aspect: number;
-}
+import type {GPUContext, Renderable} from './types'
 
 export async function initGPU(canvas: HTMLCanvasElement): Promise<GPUContext> {
   const adapter = await navigator.gpu.requestAdapter()
@@ -23,14 +11,22 @@ export async function initGPU(canvas: HTMLCanvasElement): Promise<GPUContext> {
     throw 'could not get gpu device'
   const context = canvas.getContext('webgpu') as GPUCanvasContext
   const presentationFormat = navigator.gpu.getPreferredCanvasFormat()
+  const presentationSize = {width: canvas.width, height: canvas.height}
   context.configure({
     device,
     format: presentationFormat,
     alphaMode: 'opaque',
   })
+  const msaaTexture: GPUTexture = device.createTexture({
+    size: presentationSize,
+    format: presentationFormat,
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+    sampleCount: 4,
+  })
+  const msaaView: GPUTextureView = msaaTexture.createView()
   const renderPassDescriptor: GPURenderPassDescriptor = {
     colorAttachments: [{
-      view: null,
+      view: msaaView,
       clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
       loadOp: 'clear',
       storeOp: 'store',
@@ -40,11 +36,11 @@ export async function initGPU(canvas: HTMLCanvasElement): Promise<GPUContext> {
     adapter, 
     device, 
     context, 
+    presentationSize,
     presentationFormat, 
     renderPassDescriptor,
     modules: {},
     entities: [],
-    presentationSize: {width: canvas.width, height: canvas.height},
     aspect: canvas.width / canvas.height,
   }
 }

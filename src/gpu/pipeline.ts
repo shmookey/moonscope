@@ -165,12 +165,78 @@ export async function createMainPipeline(
       depthCompare: 'less',
       format: 'depth24plus',
     },
+    multisample: {
+      count: 4,
+    },
   })
   return pipeline
 }
 
-async function loadShader(url: string, device: GPUDevice): Promise<GPUShaderModule> {
+export async function loadShader(url: string, device: GPUDevice): Promise<GPUShaderModule> {
   const result = await fetch(url)
   const code = await result.text()
   return device.createShaderModule({label: url, code})
 }
+
+/** Create a pipeline object with a given layout. */
+export function createPipeline(
+  name:               string,
+  vertexShader:       GPUShaderModule,
+  fragShader:         GPUShaderModule,
+  layout:             GPUPipelineLayout,
+  presentationFormat: GPUTextureFormat,
+  device:             GPUDevice): GPURenderPipeline {
+
+  const pipeline = device.createRenderPipeline({
+    label: name,
+    layout,
+    vertex: {
+      module: vertexShader,
+      entryPoint: 'main',
+      buffers: [{
+        arrayStride: VERTEX_SIZE,
+        stepMode: 'vertex',
+        attributes: [
+          { shaderLocation: 0, offset: 0,  format: 'float32x4' }, // position
+          { shaderLocation: 1, offset: 16, format: 'float32x2' }, // uv
+          { shaderLocation: 2, offset: 24, format: 'float32' },   // texture layer
+          { shaderLocation: 3, offset: 28, format: 'float32x3' }, // normal
+          { shaderLocation: 4, offset: 40, format: 'float32x4' }, // position
+        ]
+      }, {
+        arrayStride: 4,
+        stepMode: 'instance',
+        attributes: [
+          { shaderLocation: 5, offset: 0, format: 'uint32' }, // storage index
+        ]
+      }]
+    },
+    fragment: {
+      module: fragShader,
+      entryPoint: 'main',
+      targets: [{
+        format: presentationFormat,
+        blend: {
+          color: { operation: 'add', srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+          alpha: { operation: 'add', srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+        }
+      }]
+    },
+    primitive: {
+      topology: 'triangle-list',
+      frontFace: 'ccw',
+      cullMode: 'back',
+      
+    },
+    depthStencil: {
+      depthWriteEnabled: true,
+      depthCompare: 'less',
+      format: 'depth24plus',
+    },
+    multisample: {
+      count: 4,
+    },
+  })
+  return pipeline
+}
+

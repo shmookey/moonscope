@@ -4,7 +4,7 @@
   <defs>
     <style><![CDATA[
 rect.bg {
-  fill: #080828DD;
+  fill: #08082888;
 }
 line {
   stroke: #0808DDEE;
