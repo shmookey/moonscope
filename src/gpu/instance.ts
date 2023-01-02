@@ -87,7 +87,7 @@ export function registerAllocation(capacity: number, allocator: InstanceAllocato
  */
 export function addInstance(
     allocationId: number, 
-    data: Float32Array | null, 
+    data: ArrayBuffer | null, 
     device: GPUDevice, 
     allocator: InstanceAllocator,
     activate: boolean = true): number {
@@ -124,7 +124,7 @@ export function addInstance(
   const storagePointer = storageSlot * INSTANCE_BLOCK_SIZE
 
   if(data !== null)
-    device.queue.writeBuffer(allocator.storageBuffer, storagePointer, data.buffer)
+    device.queue.writeBuffer(allocator.storageBuffer, storagePointer, data)
 
   allocation.numInstances++
   allocator.nextInstanceId++
@@ -196,7 +196,7 @@ export function deactivateInstance(
 
 /** Update an instance in the buffer. */
 export function updateInstanceData(
-    instanceData: Float32Array, 
+    instanceData: ArrayBuffer, 
     instanceId: number, 
     allocator: InstanceAllocator,
     device: GPUDevice, 
@@ -213,7 +213,7 @@ export function updateInstanceData(
   device.queue.writeBuffer(
     storageBuffer, 
     instance.storageSlot * INSTANCE_BLOCK_SIZE + offset, 
-    instanceData.buffer)
+    instanceData)
 
 }
 

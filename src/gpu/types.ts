@@ -1,3 +1,5 @@
+import {NamedTupleMember} from "typescript";
+
 export type Renderable = {
   pipeline: GPURenderPipeline;
   vertexBuffer: GPUBuffer;
@@ -10,11 +12,16 @@ export type Renderable = {
   outputTexture?: GPUTexture;
 }
 
-export type Vec2 = Float32Array | [number,number, number]
-export type Vec3 = Float32Array | [number,number, number]
-export type Vec4 = Float32Array
-export type Mat4 = Float32Array
-export type Quat = Float32Array
+export type Vec2 = [number,number]
+export type Vec3 = [number,number, number]
+export type Vec4 = [number,number, number, number]
+export type Mat4 = [
+  number, number, number, number,
+  number, number, number, number,
+  number, number, number, number,
+  number, number, number, number,
+]
+export type Quat = [number, number, number, number]
 
 /** Standard vertex format.
  * Type: float32
@@ -27,7 +34,7 @@ export type Vertex = [
   number,  // w
   number,  // u
   number,  // v
-  number,  // l (atlas layer)
+  number,  // t (atlas texture ID)
   number,  // nx
   number,  // ny
   number,  // nz
@@ -36,6 +43,16 @@ export type Vertex = [
   number,  // usize
   number,  // vsize
 ]
+
+export type MeshVertex = {
+  position:  Vec4,     // Spatial coordinates
+  uv:        Vec2,     // Texture coordinates
+  normal:    Vec4,     // Normal vector + spare
+  tangent:   Vec4,     // Tangent vector + spare
+  bitangent: Vec4,     // Bitangent vector + spare
+  textures:  Vec4,      // Texture IDs
+}
+
 
 export type Mesh = {
   label: string,
@@ -63,60 +80,90 @@ export type XVertex = [
 
 /** Extended mesh format. Used for offline storage. */
 export type XMesh = {
-  id: number,
-  label: string,
+  id:          number,
+  name:        string,
   vertexCount: number,
-  vertices: XVertex[],
+  indexCount:  number,
+  vertices:    MeshVertex[],
+  indices:     number[],
 }
 
 
 export type TextureResource = {
-  id:       number,             // Texture resource ID
-  label?:   string,             // Human-readable name for debugging
-  size:     [number, number],   // Width, height
-  texture:  SubTexture,         // Sub-texture in texture atlas
+  id:        number,             // Texture resource ID
+  label?:    string,             // Human-readable name for debugging
+  size:      [number, number],   // Width, height
+  texture:   SubTexture,         // Sub-texture in texture atlas
+  wrappable: boolean,            // Is the texture be used for wrapping?
 }
 
 export type TextureResourceDescriptor = {
-  id:       number,             // Texture resource ID
-  label?:   string,             // Human-readable name for debugging
-  size:     [number, number],   // Width, height
-  src?:     string,             // Path to image file
-  srcType?: string,             // 'image' or 'svg'
+  id:         number,             // Texture resource ID
+  label?:     string,             // Human-readable name for debugging
+  size:       [number, number],   // Width, height
+  src?:       string,             // Path to image file
+  srcType?:   string,             // 'image' or 'svg'
+  wrappable?: boolean,            // Will texture be used for wrapping?
 }
 
 export type MeshResource = {
   id:            number,         // Mesh resource ID
   name:          string,         // Human-readable name
   vertexCount:   number,         // Number of vertices in mesh
+  indexCount:    number,         // Number of indices in mesh
   vertexPointer: number,         // Byte offset location in vertex buffer
+  indexPointer:  number,         // Byte offset location in index buffer
+  indexOffset:   number,         // Index offset for this mesh
 }
 
 export type MeshResourceDescriptor = {
   id:          number,           // Mesh resource ID
   name:        string,           // Human-readable name
   vertexCount: number,           // Number of vertices in mesh
+  indexCount:  number,           // Number of indices in mesh
   src?:        string,           // Path to file containing mesh data
   srcType?:    string,           // 'json' or 'bin'
-  vertices?:   XVertex[],        // Optionally, vertex data can be provided directly
+  srcOffset:   number,           // Byte offset in binary source
+  vertices?:   MeshVertex[],     // Optionally, vertex data can be provided directly
+  indices?:    number[],         // Optionally, index data can be provided directly 
   texRemap?:   TextureRemapping, // Texture IDs remapping
   prescale?:   number,           // Scale factor applied to vertex positions
+  prescaleUV?: number,           // Scale factor applied to vertex UVs
 }
 
 export type TextureRemapping = {
   [texId: number]: number
 }
 
+export type ShaderResourceDescriptor = {
+  name: string,                 // Shader name
+  src:  string,                 // Path to shader file
+}
+
+export type PipelineDescriptor = {
+  name:           string,       // Pipeline name
+  vertexShader:   string,       // Vertex shader name
+  fragmentShader: string,       // Fragment shader name
+  depthWrite:     boolean,      // Enable writing to the depth buffer
+}
+
+export type ShaderStore   = { [name: string]: GPUShaderModule }
+export type PipelineStore = { [name: string]: GPURenderPipeline }
+
 export type ResourceBundleDescriptor = {
-  label?:   string,                      // Human-readable name for debugging
-  meshes:   MeshResourceDescriptor[],    // Mesh resources
-  textures: TextureResourceDescriptor[], // Texture resources
+  label?:    string,                      // Human-readable name for debugging
+  meshes:    MeshResourceDescriptor[],    // Mesh resources
+  textures:  TextureResourceDescriptor[], // Texture resources
+  shaders:   ShaderResourceDescriptor[],  // Shader resources
+  pipelines: PipelineDescriptor[],        // Render pipelines
+  scenes:    SceneGraphDescriptor[],      // Scene descriptions
 }
 
 export type ResourceBundle = {
   label?:        string,                 // Human-readable name for debugging
   meshes:        MeshResource[],         // Mesh resources
   textures:      TextureResource[],      // Texture resources
+  scenes:        SceneGraph[],           // Scene graphs
 }
 
 /** Storage type for geometry (mesh) data.
@@ -127,13 +174,19 @@ export type ResourceBundle = {
  */
 export type MeshStore = {
   vertexBuffer:     GPUBuffer,              // Vertex buffer
+  indexBuffer:      GPUBuffer,              // Index buffer
   vertexSize:       number,                 // Size of each vertex in bytes
-  capacity:         number,                 // Maximum number of vertices
+  indexSize:        number,                 // Size of each index in bytes
+  vertexCapacity:   number,                 // Maximum number of vertices
+  indexCapacity:    number,                 // Maximum number of indices
   vertexCount:      number,                 // Number of vertices in buffer
+  indexCount:       number,                 // Number of indices in buffer
   meshes:           MeshResource[],         // Mesh resources
   nextMeshId:       number,                 // Next available mesh ID
   nextVertexOffset: number,                 // Next available vertex offset
   vacancies:        [number, number][],     // Vacant regions in buffer
+  nextIndex:        number,                 // Index of next vertex
+  nextIndexOffset:  number,                 // Offset in index buffer of next index
 }
 
 /** Texture atlas. 
@@ -147,13 +200,15 @@ export type MeshStore = {
  *   - Sub-textures must be square, with a power of 2 size.
 */
 export type Atlas = {
-  label?:      string,           // Human-readable name for debugging
-  texture:     GPUTexture,       // Texture object
-  layerSize:   [number, number], // Texel dimensions of each layer
-  layerCount:  number,           // Number of layers
-  subTextures: SubTexture[],     // Sub-textures in atlas
-  format:      GPUTextureFormat, // Texture format
-  mipLevels:   number,           // Number of mip levels
+  label?:         string,           // Human-readable name for debugging
+  capacity:       number,           // Maximum number of sub-textures
+  texture:        GPUTexture,       // Texture object
+  layerSize:      [number, number], // Texel dimensions of each layer
+  layerCount:     number,           // Number of layers
+  subTextures:    SubTexture[],     // Sub-textures in atlas
+  format:         GPUTextureFormat, // Texture format
+  mipLevels:      number,           // Number of mip levels
+  metadataBuffer: GPUBuffer,        // Atlas metadata buffer
 }
 
 /** A texture stored in a region of an atlas.
@@ -161,16 +216,22 @@ export type Atlas = {
  * texture itself to prevent bleeding when mipmapping is enabled.
  */
 export type SubTexture = {
-  id:        number, // Texture ID in atlas
-  label?:    string, // Label for debugging
-  x:         number, // X offset in atlas
-  y:         number, // Y offset in atlas
-  width:     number, // Width in atlas (must be power of 2)
-  height:    number, // Height in atlas (must be power of 2)
-  layer:     number, // Layer in atlas
-  region:    Region, // Texture region in atlas
+  id:        number,  // Texture ID in atlas
+  label?:    string,  // Label for debugging
+  x:         number,  // X offset in atlas
+  y:         number,  // Y offset in atlas
+  width:     number,  // Width in atlas (must be power of 2)
+  height:    number,  // Height in atlas (must be power of 2)
+  layer:     number,  // Layer in atlas
+  region:    Region,  // Texture region in atlas
+  wrappable: boolean, // Whether texture has extra padding for wrapping
 }
 export type Region = [number, number, number, number]  // x, y, width, height
+
+/** Atlas metadata GPU storage buffer record. */
+//export type SubTextureGPURecord = {
+
+
 
 /** Describes rendering work to be done.
  * May be combined to optimise the number of draw calls.
@@ -186,6 +247,10 @@ export type DrawCallDescriptor = {
   instanceCount:   number,
   bindGroup:       GPUBindGroup,
   pipeline:        GPURenderPipeline,
+  indexBuffer:     GPUBuffer,
+  indexPointer:    number,
+  indexCount:      number,
+  indexOffset:     number,
 }
 
 /** A renderable inhabitant of a Scene. */
@@ -350,7 +415,7 @@ export type Node = ModelNode
 
 /** Base node type. */
 export interface BaseNode {
-  label?:    string,
+  name?:     string,
   nodeType:  'model' | 'transform' | 'camera' | 'light',
   transform: Mat4,
   parent:    Node | null,
@@ -385,7 +450,6 @@ export interface CameraNode extends BaseNode {
   view:       View | null,
 }
 
-
 /** Scene view.
  * 
  * Stores view/projection matrices and may be connected to a camera node.
@@ -398,22 +462,42 @@ export type View = {
 }
 
 
+// Scene graph descriptors
+//
+
+export type SceneGraphDescriptor = {
+  name:    string,
+  root?:   NodeDescriptor,
+  models?: ModelDescriptor[],
+  views?:  ViewMetaDescriptor[],
+}
+
+export type ViewMetaDescriptor = {
+  name: string,
+  projection: ViewDescriptor
+}
+
 /** Scene view descriptor. */
 export type ViewDescriptor = 
   PerspectiveViewDescriptor |
   OrthographicViewDescriptor
 
+export type BaseViewDescriptor = {
+  name?: string,
+  type:  'perspective' | 'orthographic',
+}
+
 /** Perspective camera node descriptor. */
-export interface PerspectiveViewDescriptor {
+export interface PerspectiveViewDescriptor extends BaseViewDescriptor {
   type:   'perspective',
   fovy:   number,
-  aspect: number,
+  aspect: number | 'auto',
   near:   number,
-  far:    number,
+  far:    number | 'Infinity',
 }
 
 /** Orthographic camera node descriptor. */
-export interface OrthographicViewDescriptor {
+export interface OrthographicViewDescriptor extends BaseViewDescriptor {
   type:   'orthographic',
   left:   number,
   right:  number,
@@ -421,6 +505,79 @@ export interface OrthographicViewDescriptor {
   top:    number,
   near:   number,
   far:    number,
+}
+
+
+/** Node descriptor. */
+export type NodeDescriptor = ModelNodeDescriptor
+                           | TransformNodeDescriptor
+                           | CameraNodeDescriptor
+                           | LightSourceNodeDescriptor
+
+/** Base node type. */
+export interface BaseNodeDescriptor {
+  name?:      string,
+  type:       'model' | 'transform' | 'camera' | 'light',
+  transform?: TransformDescriptor,
+  children?:  NodeDescriptor[],
+}
+
+export interface LightSourceNodeDescriptor extends BaseNodeDescriptor {
+  type:      'light',
+  intensity: number,
+}
+
+/** Model node, a type of leaf node. */
+export interface ModelNodeDescriptor extends BaseNodeDescriptor {
+  type:      'model',
+  modelName: string,
+}
+
+/** Transform node. */
+export interface TransformNodeDescriptor extends BaseNodeDescriptor {
+  type: 'transform',
+}
+
+/** Camera node.
+ * 
+ * Writes a view matrix to a registered view object.
+ */
+export interface CameraNodeDescriptor extends BaseNodeDescriptor {
+  type: 'camera',
+  view: string,
+}
+
+export type TransformDescriptor = Mat4Descriptor
+                                | TranslationRotationScaleDescriptor
+                                | GlobeTransformDescriptor
+
+export interface TransformDescriptorBase {
+  type: 'matrix' | 'trs' | 'globe',
+}
+
+export interface Mat4Descriptor extends TransformDescriptorBase {
+  type:   'matrix',
+  values: Mat4,
+}
+
+export interface TranslationRotationScaleDescriptor extends TransformDescriptorBase {
+  type:         'trs',
+  translation?: [number, number, number],         // position vector
+  rotation?:    [number, number, number, number], // rotation quaternion
+  scale?:       [number, number, number],         // scaling vector
+}
+
+export interface GlobeTransformDescriptor extends TransformDescriptorBase {
+  type:   'globe',
+  coords: [number, number], // lat/lon in degrees
+  radius: number,
+}
+
+export type ModelDescriptor = {
+  name:         string, //  Human-readable name
+  mesh:         string, // Name of mesh resource
+  pipeline:     string, // Name of pipeline to use for rendering
+  maxInstances: number, // Maximum number of instances
 }
 
 
@@ -444,28 +601,27 @@ export interface OrthographicViewDescriptor {
  * with a single renderer.
  */
 export type Renderer = {
-  viewMatrix: Mat4,
-  uniformData: Float32Array,
-  mainBindGroup: GPUBindGroup,
+  viewMatrix:          Mat4,
+  uniformData:         Float32Array,
+  mainBindGroup:       GPUBindGroup,
   mainBindGroupLayout: GPUBindGroupLayout,
-  mainUniformBuffer: GPUBuffer,
-  mainSampler: GPUSampler,
-  mainPipeline: GPURenderPipeline,
-  pipelineLayout: GPUPipelineLayout,
-  atlas: Atlas,
-  bundle: ResourceBundle,
-  instanceAllocator: InstanceAllocator,
-  meshStore: MeshStore,
-  drawCalls: DrawCallDescriptor[],
-  models: Model[],
-  nextModelId: number,
-  nextDrawCallId: number,
-  device: GPUDevice,
-  depthTexture: GPUTexture,
-  depthTextureView: GPUTextureView,
-  outputSize: [number, number],
-  context: GPUContext,
-  pipelines: { [k: string]: GPURenderPipeline },
+  mainUniformBuffer:   GPUBuffer,
+  mainSampler:         GPUSampler,
+  pipelineLayout:      GPUPipelineLayout,
+  atlas:               Atlas,
+  instanceAllocator:   InstanceAllocator,
+  meshStore:           MeshStore,
+  drawCalls:           DrawCallDescriptor[],
+  models:              Model[],
+  nextModelId:         number,
+  nextDrawCallId:      number,
+  device:              GPUDevice,
+  depthTexture:        GPUTexture,
+  depthTextureView:    GPUTextureView,
+  outputSize:          [number, number],
+  context:             GPUContext,
+  pipelines:           PipelineStore,
+  shaders:             ShaderStore,
 }
 
 export type GPUContext = {

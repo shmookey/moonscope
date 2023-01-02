@@ -1,14 +1,16 @@
-import type {Camera, CameraNode, DrawCallDescriptor, FirstPersonCamera, GPUContext, Mat4, Model, ModelNode, Node, Renderer, Scene, SceneGraph, TransformNode, View, ViewDescriptor} from "./types"
+import type {BaseNode, Camera, CameraNode, DrawCallDescriptor, FirstPersonCamera, GPUContext, Mat4, Model, ModelNode, Node, NodeDescriptor, Renderer, Scene, SceneGraph, SceneGraphDescriptor, TransformNode, Vec2, Vec4, View, ViewDescriptor} from "./types"
 import * as Skybox from './skybox.js'
 import {createCamera, createFirstPersonCamera, getCameraViewMatrix} from './camera.js'
-import { mat4 } from 'gl-matrix'
+import { mat4, vec4, quat, glMatrix } from 'gl-matrix'
 import {activateInstance, addInstance, deactivateInstance, registerAllocation, updateInstanceData} from "./instance.js"
 import {getMeshByName} from "./mesh.js"
 import {INSTANCE_BLOCK_SIZE} from "./constants.js"
+import {latLonToUnitVec} from "./common.js"
+const { PI } = Math
+glMatrix.setMatrixArrayType(Array)
 
-const defaultTransform: Mat4 = mat4.create() as Mat4
-const defaultInstancecData = new Float32Array(INSTANCE_BLOCK_SIZE/4)
-defaultInstancecData.set(defaultTransform)
+const instanceDataBuffer = new ArrayBuffer(INSTANCE_BLOCK_SIZE)
+const instanceDataBufferF32 = new Float32Array(instanceDataBuffer)
 
 /** Create a scene. */
 export async function createScene(
@@ -31,7 +33,7 @@ export async function createScene(
 export function createSceneGraph(renderer: Renderer): SceneGraph {
   const rootNode: TransformNode = {
     nodeType:  'transform',
-    label:     'root',
+    name:      'root',
     transform: mat4.create() as Mat4,
     parent:    null,
     root:      null,
@@ -49,6 +51,82 @@ export function createSceneGraph(renderer: Renderer): SceneGraph {
   }
 }
 
+
+export function createSceneGraphFromDescriptor(
+    descriptor: SceneGraphDescriptor, 
+    renderer:   Renderer): SceneGraph {
+
+  const sceneGraph = createSceneGraph(renderer)
+  sceneGraph.label = descriptor.name
+  if(descriptor.models) {
+    for(let modelDescriptor of descriptor.models)
+      registerSceneGraphModel(
+        modelDescriptor.name,
+        modelDescriptor.mesh,
+        modelDescriptor.pipeline,
+        modelDescriptor.maxInstances,
+        sceneGraph)
+  }
+  if(descriptor.views) {
+    for(let viewDescriptor of descriptor.views)
+      createSceneView(
+        viewDescriptor.name, 
+        viewDescriptor.projection, 
+        sceneGraph)
+  }
+  if(descriptor.root) {
+    const root = createNodeFromDescriptor(descriptor.root, sceneGraph)
+    attachNode(root, sceneGraph.root, sceneGraph)
+    sceneGraph.root = root
+    root.name = 'root'
+    root.root = root
+    root.parent = null
+  }
+  return sceneGraph
+}
+
+export function createNodeFromDescriptor(
+    descriptor: NodeDescriptor, 
+    sceneGraph: SceneGraph): Node {
+  let node: Node = null
+  if(descriptor.type == 'model') {
+    node = createModelNode(descriptor.modelName, sceneGraph) 
+  } else if(descriptor.type == 'camera') {
+    node = createCameraNode(descriptor.view, sceneGraph)
+  } else if(descriptor.type == 'transform') {
+    node = createTransformNode(sceneGraph)
+  } else if(descriptor.type == 'light') {
+    throw 'not implemented'
+  }
+  node.name = descriptor.name
+  if(descriptor.transform) {
+    const transform = descriptor.transform
+    if(transform.type == 'matrix') {
+      node.transform = mat4.fromValues(...transform.values) as Mat4
+    } else if(transform.type == 'trs') {
+      const rotation = transform.rotation ?? [0, 0, 0, 1]
+      const translation = transform.translation ?? [0, 0, 0]
+      const scale = transform.scale ?? [1, 1, 1]
+      mat4.fromRotationTranslationScale(node.transform, rotation, translation, scale)
+    } else if(transform.type == 'globe') { 
+      const translation = mat4.create()
+      mat4.fromTranslation(translation, [0, transform.radius, 0])
+      const direction = latLonToUnitVec(transform.coords.map(x => x*PI/180) as Vec2)
+      const rotation = quat.create()
+      quat.rotationTo(rotation, [0,1,0], direction)
+      mat4.fromQuat(node.transform, rotation)
+      mat4.mul(node.transform, node.transform, translation)
+    }
+  }
+  if(descriptor.children) {
+    for(let childDescriptor of descriptor.children) {
+      const child = createNodeFromDescriptor(childDescriptor, sceneGraph)
+      attachNode(child, node, sceneGraph)
+    }
+  }
+  return node
+}
+
 /** Create a view. */
 export function createSceneView(
     name:       string, 
@@ -64,12 +142,16 @@ export function createSceneView(
     camera:     null,
   }
   if(descriptor.type === 'perspective') {
+    const aspect = descriptor.aspect == 'auto' 
+                 ? sceneGraph.renderer.context.aspect
+                 : descriptor.aspect
+    const far: number = descriptor.far === 'Infinity' ? Infinity : descriptor.far
     mat4.perspectiveZO(
       view.projection,
-      descriptor.fovy,
-      descriptor.aspect,
+      descriptor.fovy * PI/180,
+      aspect,
       descriptor.near,
-      descriptor.far,
+      far,
     )
   } else if(descriptor.type === 'orthographic') {
     mat4.ortho(
@@ -100,7 +182,7 @@ export function createModelNode(
 
   const instanceId = addInstance(
     model.allocationId, 
-    defaultInstancecData, 
+    instanceDataBuffer, 
     device, 
     instanceAllocator,
     false,
@@ -161,13 +243,13 @@ export function createTransformNode(sceneGraph: SceneGraph): Node {
 
 /** Register a model with the scene graph. */
 export function registerSceneGraphModel(
-    name: string,
-    meshName: string,
+    name:         string,
+    meshName:     string,
     pipelineName: string,
     maxInstances: number,
-    sceneGraph: SceneGraph): void {
+    sceneGraph:   SceneGraph): void {
 
-  const { instanceAllocator, meshStore, mainBindGroup, mainPipeline } = sceneGraph.renderer
+  const { instanceAllocator, meshStore, mainBindGroup } = sceneGraph.renderer
   const allocationId = registerAllocation(maxInstances, instanceAllocator)
   const allocation = instanceAllocator.allocations[allocationId]
   const mesh = getMeshByName(meshName, meshStore)
@@ -192,6 +274,10 @@ export function registerSceneGraphModel(
     instanceCount:   0,
     bindGroup:       mainBindGroup,
     pipeline:        pipeline,
+    indexPointer:    mesh.indexPointer,
+    indexBuffer:     meshStore.indexBuffer,
+    indexOffset:     mesh.indexOffset,
+    indexCount:      mesh.indexCount,
   }
   
   
@@ -246,7 +332,7 @@ function setupNewlyAttachedNode(node: Node, transform: Mat4, sceneGraph: SceneGr
   if(node.nodeType === 'model') { 
     const { instanceAllocator, device } = sceneGraph.renderer
     activateInstance(node.instanceId, instanceAllocator, device)
-    updateInstanceData(transform, node.instanceId, instanceAllocator, device)
+    //updateInstanceData(transform, node.instanceId, instanceAllocator, device)
     const drawCall = sceneGraph.drawCalls[node.drawCallId]
     drawCall.instanceCount++
   } else if(node.nodeType === 'camera' && node.view) {
@@ -290,7 +376,7 @@ function updateNodeTransform(node: Node, transform: Mat4, sceneGraph: SceneGraph
   mat4.mul(transform, transform, node.transform) // transform is now model matrix
   if(node.nodeType === 'model') {
     const { instanceAllocator, device } = sceneGraph.renderer
-    updateInstanceData(transform, node.instanceId, instanceAllocator, device)
+    //updateInstanceData(transform, node.instanceId, instanceAllocator, device)
   } else if(node.nodeType === 'camera' && node.view) {
     mat4.invert(node.view.viewMatrix, transform)
   }
@@ -341,5 +427,123 @@ function detachNodeFromRoot(node: Node, sceneGraph: SceneGraph): void {
   }
 }
 
-export function renderSceneGraph() {
+/** Retrieve the first matching element, or null. */
+export function getNodeByName(name: string, sceneGraph: SceneGraph): Node | null {
+  return getNodeByName_(name, sceneGraph.root)
 }
+
+function getNodeByName_(name: string, node: Node): Node | null {
+  if(node.name === name)
+    return node
+  for(const child of node.children) {
+    const match = getNodeByName_(name, child)
+    if(match !== null)
+      return match
+  }
+  return null
+}
+
+/** Update the modelView matrices of all the model nodes in the scene graph. */
+export function updateModelViews(view: View, sceneGraph: SceneGraph): void {
+  const viewMatrix = getViewMatrix(view)
+  view.viewMatrix = viewMatrix
+  updateModelViews_(sceneGraph.root, mat4.create() as Mat4, viewMatrix, sceneGraph)
+}
+
+/** Internal recursive helper function for updateModelViews. */
+function updateModelViews_(
+    node: Node, 
+    currentTransform: Mat4, 
+    viewMatrix: Mat4,
+    sceneGraph: SceneGraph): void {
+  mat4.multiply(currentTransform, currentTransform, node.transform)
+  if(node.nodeType === 'model') {
+    let modelViewMatrix = mat4.create() as Mat4
+    mat4.multiply(modelViewMatrix, viewMatrix, currentTransform)
+    if(modelViewMatrix.some(x => x > 1000000)) {
+      //console.warn(`WARNING: large numbers detected in modelview matrix. reprojecting...`)
+      modelViewMatrix = checkProjection(modelViewMatrix, sceneGraph.views.default.projection)
+      
+    }
+    instanceDataBufferF32.set(modelViewMatrix)
+    const { instanceAllocator, device } = sceneGraph.renderer
+    updateInstanceData(instanceDataBuffer, node.instanceId, instanceAllocator, device)
+  }
+  for(const child of node.children) {
+    updateModelViews_(child, mat4.clone(currentTransform) as Mat4, viewMatrix, sceneGraph)
+  }
+}
+
+/** Calculate the model matrix for a node. */
+export function getModelMatrix(node: Node): Mat4 {
+  if(!node.root)
+    throw new Error('Node is not attached to the scene graph.')
+  const modelMatrix = mat4.create() as Mat4
+  let ancestor = node
+  while(ancestor) {
+    mat4.multiply(modelMatrix, ancestor.transform, modelMatrix)
+    ancestor = ancestor.parent
+  }
+  return modelMatrix
+}
+
+/** Calculate the view matrix for a view. */
+export function getViewMatrix(view: View): Mat4 {
+  if(!view.camera)
+    throw new Error('View has no camera.')
+  const cameraModelMatrix = getModelMatrix(view.camera)
+  mat4.invert(cameraModelMatrix, cameraModelMatrix)
+  return cameraModelMatrix
+}
+
+export function checkProjection(modelView: Mat4, projection: Mat4): Mat4 {
+  //const cube = [
+  //  [-1,-1,-1, 1],
+  //  [-1,-1, 1, 1],
+  //  [-1, 1,-1, 1],
+  //  [-1, 1, 1, 1],
+  //  [ 1,-1,-1, 1],
+  //  [ 1,-1, 1, 1],
+  //  [ 1, 1,-1, 1],
+  //  [ 1, 1, 1, 1],
+  //]
+  const projected = mat4.create()
+  mat4.mul(projected, projection, modelView)
+
+  //console.log('projection', projection)
+  //console.log('projected matrix', projected)
+  //console.log('original modelview', modelView)
+
+  //for(let v of cube) {
+  //  vec4.transformMat4(v as Vec4, v as Vec4, projected)
+  //}
+
+  //console.log('original projected cube vertices', cube.map(v => [...v]))
+
+  //for(let v of cube) {
+  //  v[0] /= v[3]
+  //  v[1] /= v[3]
+  //  v[2] /= v[3]
+  //  v[3] /= v[3]
+  //}
+
+  //console.log('projected cube vertices after w-divide', cube.map(v => [...v]))
+
+  const [iproj, shrunk] = [mat4.create(), mat4.clone(projected)]
+  mat4.invert(iproj, projection)
+  mat4.multiplyScalar(shrunk, projected, 0.0001)
+
+  //console.log('inverted projection', iproj)
+  //console.log('shrunk projected matrix', shrunk)
+
+  const unproj = mat4.create()
+  mat4.mul(unproj, iproj, shrunk)
+
+  //console.log('unprojected shrunk matrix', mat4.clone(unproj))
+
+  unproj[11] = 0
+  unproj[15] = 1
+
+  return unproj as Mat4
+}
+

@@ -12,14 +12,14 @@ struct Storage {
 @group(0) @binding(3) var atlas: texture_2d_array<f32>;
 
 const fadeFactor: f32 = 35;
-const lineWeight: f32 = 2.0;
+const lineWeight: f32 = 4.0;
 
 fn findIntensity(r: f32, zoom: i32, ddx: f32, ddy: f32) -> f32 {
   let freq = pow(f32(5), f32(zoom));
   let unit = max(abs(ddx), abs(ddy));
 
   // Antialiased line
-  let delta = abs(r % (1/freq) - 0.5/freq);
+  let delta = abs(abs(r) % (1/freq) - 0.5/freq);
   let clipped = 1 - smoothstep(unit, lineWeight*unit, delta);
 
   // Zoom level intensity
@@ -38,19 +38,19 @@ fn main(
   @location(4) @interpolate(flat)        instanceSlot: u32,
   @location(5) @interpolate(flat)        texBounds:    vec4<f32>,
 ) -> @location(0) vec4<f32> {
-  let dUVdx = dpdx(uv);
-  let dUVdy = dpdy(uv);
+  let gridUV = uv / 1.0;
+  let dUVdx = dpdx(gridUV);
+  let dUVdy = dpdy(gridUV);
 
-  var r = 0.0;
-  var g = 0.0;
+  var h = 0.0;
+  var v = 0.0;
   for(var i: i32 = -2; i < 8; i++) {
-    r += 0.25 * findIntensity(uv.x, i, dUVdx.x, dUVdy.x);
-    g += 0.25 * findIntensity(uv.y, i, dUVdx.y, dUVdy.y);
+    h += 0.25 * findIntensity(gridUV.x, i, dUVdx.x, dUVdy.x);
+    v += 0.25 * findIntensity(gridUV.y, i, dUVdx.y, dUVdy.y);
   }
-  var lvl = (r + g) / 2;
-
-  var texColour = vec4(lvl, lvl, lvl, 0.9);
+  let gridLevel = h+v;
+  let gridAlpha: f32 = step(0.1, gridLevel);
+  let gridColour = vec4(0, 0, gridLevel, gridLevel/4);
   
-  return texColour;
-
+  return gridColour;
 }

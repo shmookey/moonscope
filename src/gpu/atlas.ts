@@ -1,17 +1,27 @@
-/** atlas.ts -- Texture atlas for WebGPU. */
+/** atlas.ts -- Texture atlas for WebGPU.
+ * 
+ * This module implements a texture atlas.
+ * 
+ * Textures are stored in an atlas region that is double the width and height
+ * of the original texture. This allows for the combination of wrapped textures
+ * and mip-mapping.
+ * 
+ * 
+ */
 
 import type {Atlas, Region, SubTexture} from "./types"
 const { max } = Math
 
 const MIN_LAYER_SIZE = 256; // Minimum size of each layer in atlas
-
+const METADATA_RECORD_SIZE = 24; // Size of each metadata record in bytes (4 floats region + 1 uint layer + 4 byte pad)
 
 /** Create a new texture atlas. */
 export function createAtlas(
-    device: GPUDevice,
+    capacity: number,
     size: [number, number, number], // width, height, layers 
     format: GPUTextureFormat,
-    mipLevels: number): Atlas {
+    mipLevels: number,
+    device: GPUDevice): Atlas {
 
   const layerSize: [number, number] = [size[0], size[1]]
   const layerCount = size[2]
@@ -35,35 +45,60 @@ export function createAtlas(
     mipLevelCount: mipLevels,
   })
 
+  const metadataBuffer = device.createBuffer({
+    size: capacity * 4 * 4,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  })
+
   return {
+    capacity,
     texture, 
     layerSize, 
     layerCount, 
     format, 
     mipLevels,
     subTextures: [],
+    metadataBuffer,
   }
 }
 
 /** Add a sub-texture to an atlas. */
-export function addSubTexture(atlas: Atlas, width: number, height: number, label: string): SubTexture {
-  const destination = findSpaceInAtlas(atlas, width*2, height*2)
+export function addSubTexture(atlas: Atlas, width: number, height: number, label: string, wrappable: boolean, device: GPUDevice): SubTexture {
+  const containingWidth = wrappable ? width*2 : width
+  const containingHeight = wrappable ? height*2 : height
+
+  const destination = findSpaceInAtlas(atlas, containingWidth, containingHeight)
   if(!destination) {
     throw new Error('No space in atlas for sub-texture')
   }
   const id = atlas.subTextures.length
   const [ x, y, layer ] = destination
-  const region: Region = [x, y, width*2, height*2]
-  atlas.subTextures.push({
+  const region: Region = [x, y, containingWidth, containingHeight]
+  const innerX = wrappable ? x + width/2 : x
+  const innerY = wrappable ? y + height/2 : y
+  const record = {
     id, 
     label, 
-    x: x + width/2, 
-    y: y + height/2, 
+    x: innerX, 
+    y: innerY, 
     width, 
     height, 
     layer, 
-    region
-  })
+    region,
+    wrappable
+  }
+  atlas.subTextures.push(record)
+  const metadata = new Float32Array([
+    record.x / atlas.layerSize[0], 
+    record.y / atlas.layerSize[1], 
+    record.width / atlas.layerSize[0], 
+    record.height / atlas.layerSize[1], 
+    0, 0
+  ]);
+  const ptr = id * METADATA_RECORD_SIZE;
+  (new DataView(metadata.buffer)).setInt32(4*4, record.layer, true)
+  device.queue.writeBuffer(atlas.metadataBuffer, ptr, metadata)
+  console.info(`Added sub-texture ${id} to atlas. Wrote metadata to buffer at ${ptr}: ${metadata}`)
   return atlas.subTextures[id]
 }
 
@@ -162,74 +197,76 @@ export async function copyImageToSubTexture(
       width: max(1, subTexture.width >> mipLevel),
       height: max(1, subTexture.height >> mipLevel),
     })
-    // left border
-    device.queue.copyExternalImageToTexture({
-      source: image,
-      origin: [width/2, 0],
-      flipY: true,
-    }, {
-      texture: atlas.texture,
-      mipLevel,
-      origin: [
-        subTexture.region[0] >> mipLevel, 
-        y, 
-        subTexture.layer
-      ],
-    }, {
-      width: max(1, width/2),
-      height: max(1, height),
-    })
-    // right border
-    device.queue.copyExternalImageToTexture({
-      source: image,
-      origin: [0, 0],
-      flipY: true,
-    }, {
-      texture: atlas.texture,
-      mipLevel,
-      origin: [
-        x + width, 
-        y, 
-        subTexture.layer
-      ],
-    }, {
-      width: max(1, width/2),
-      height: max(1, height),
-    })
-    // top border
-    device.queue.copyExternalImageToTexture({
-      source: image,
-      origin: [0, height/2],
-      flipY: true,
-    }, {
-      texture: atlas.texture,
-      mipLevel,
-      origin: [
-        x,
-        subTexture.region[1] >> mipLevel, 
-        subTexture.layer
-      ],
-    }, {
-      width: max(1, width),
-      height: max(1, height/2),
-    })
-    // bottom border
-    device.queue.copyExternalImageToTexture({
-      source: image,
-      origin: [0, 0],
-      flipY: true,
-    }, {
-      texture: atlas.texture,
-      mipLevel,
-      origin: [
-        x,
-        y + height,  
-        subTexture.layer
-      ],
-    }, {
-      width: max(1, width),
-      height: max(1, height/2),
-    })
+    if(subTexture.wrappable) {
+      // left border
+      device.queue.copyExternalImageToTexture({
+        source: image,
+        origin: [width/2, 0],
+        flipY: true,
+      }, {
+        texture: atlas.texture,
+        mipLevel,
+        origin: [
+          subTexture.region[0] >> mipLevel, 
+          y, 
+          subTexture.layer
+        ],
+      }, {
+        width: max(1, width/2),
+        height: max(1, height),
+      })
+      // right border
+      device.queue.copyExternalImageToTexture({
+        source: image,
+        origin: [0, 0],
+        flipY: true,
+      }, {
+        texture: atlas.texture,
+        mipLevel,
+        origin: [
+          x + width, 
+          y, 
+          subTexture.layer
+        ],
+      }, {
+        width: max(1, width/2),
+        height: max(1, height),
+      })
+      // top border
+      device.queue.copyExternalImageToTexture({
+        source: image,
+        origin: [0, height/2],
+        flipY: true,
+      }, {
+        texture: atlas.texture,
+        mipLevel,
+        origin: [
+          x,
+          subTexture.region[1] >> mipLevel, 
+          subTexture.layer
+        ],
+      }, {
+        width: max(1, width),
+        height: max(1, height/2),
+      })
+      // bottom border
+      device.queue.copyExternalImageToTexture({
+        source: image,
+        origin: [0, 0],
+        flipY: true,
+      }, {
+        texture: atlas.texture,
+        mipLevel,
+        origin: [
+          x,
+          y + height,  
+          subTexture.layer
+        ],
+      }, {
+        width: max(1, width),
+        height: max(1, height/2),
+      })
+    }
   }
 }
 

@@ -1,26 +1,35 @@
 /** scene.ts - Low-level scene management and rendering. */
 
 import {mat4} from "../../node_modules/gl-matrix/esm/index.js"
-import type {Atlas, DrawCallDescriptor, Mat4} from "./types.js"
+import type {Atlas, Mat4, ShaderStore} from "./types.js"
 import {UNIFORM_BUFFER_FLOATS, UNIFORM_BUFFER_SIZE, VERTEX_SIZE} from "./constants.js"
 
 
 const bindGroupLayoutDescriptor: GPUBindGroupLayoutDescriptor = {
   label: 'main-bind-group-layout',
   entries: [{
+    // Uniform buffer
     binding: 0, 
     visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
     buffer: { type: 'uniform' },
-  }, {
+  }, { 
+    // Instance uniforms
     binding: 1, 
     visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
     buffer: { type: 'read-only-storage' },
   }, {
+    // Atlas metadata
     binding: 2, 
+    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+    buffer: { type: 'read-only-storage' },
+  }, {
+    // Sampler
+    binding: 3, 
     visibility: GPUShaderStage.FRAGMENT,
     sampler: { type: 'filtering' },
   }, {
-    binding: 3,
+    // Atlas texture    
+    binding: 4,
     visibility: GPUShaderStage.FRAGMENT,
     texture: { 
       sampleType: 'float', 
@@ -51,7 +60,7 @@ export function setViewMatrix(viewMatrix: Mat4, buffer: GPUBuffer, device: GPUDe
   if(viewMatrix.length != 16) {
     throw new Error("viewMatrix must have 16 elements")
   }
-  device.queue.writeBuffer(buffer, 0, viewMatrix)
+  device.queue.writeBuffer(buffer, 0, new Float32Array(viewMatrix))
 }
 
 /** Update the projection matrix. */
@@ -59,7 +68,7 @@ export function setProjectionMatrix(projectionMatrix: Mat4, buffer: GPUBuffer, d
   if(projectionMatrix.length != 16) {
     throw new Error("projectionMatrix must have 16 elements")
   }
-  device.queue.writeBuffer(buffer, 64, projectionMatrix.buffer)
+  device.queue.writeBuffer(buffer, 64, new Float32Array(projectionMatrix))
 }
 
 export function createMainBindGroupLayout(device: GPUDevice): GPUBindGroupLayout {
@@ -85,8 +94,9 @@ export function createMainBindGroup(
     entries: [
       { binding: 0, resource: { buffer: uniformBuffer } },
       { binding: 1, resource: { buffer: storageBuffer } }, 
-      { binding: 2, resource: sampler }, 
-      { binding: 3, resource: textureView},
+      { binding: 2, resource: { buffer: atlas.metadataBuffer } },
+      { binding: 3, resource: sampler }, 
+      { binding: 4, resource: textureView},
     ]
   })
   return bindGroup
@@ -94,88 +104,22 @@ export function createMainBindGroup(
 
 export function createMainSampler(device: GPUDevice): GPUSampler {
   return device.createSampler({
-    label: 'main-sampler',
-    magFilter: 'linear',
-    minFilter: 'linear',
-    mipmapFilter: 'linear',
-    maxAnisotropy: 3,
+    label:         'main-sampler',
+    magFilter:     'linear',
+    minFilter:     'linear',
+    mipmapFilter:  'linear',
+    maxAnisotropy: 16,
   })
 }
 
 /** Create the pipeline layout. */
 export function createMainPipelineLayout(
     bindGroupLayout: GPUBindGroupLayout,
-    device: GPUDevice): GPUPipelineLayout {
+    device:          GPUDevice): GPUPipelineLayout {
   return device.createPipelineLayout({
     label: 'main-pipeline-layout',
     bindGroupLayouts: [bindGroupLayout],
   })
-}
-
-/** Create the main pipeline object. */
-export async function createMainPipeline(
-    layout: GPUPipelineLayout,
-    presentationFormat: GPUTextureFormat,
-    device: GPUDevice): Promise<GPURenderPipeline> {
-  const vertexShader = await loadShader('/shader/entity.vert.wgsl', device)
-  const fragShader = await loadShader('/shader/entity.frag.wgsl', device)
-  const pipeline = device.createRenderPipeline({
-    label: 'main-pipeline',
-    layout,
-    vertex: {
-      module: vertexShader,
-      entryPoint: 'main',
-      buffers: [{
-        arrayStride: VERTEX_SIZE,
-        stepMode: 'vertex',
-        attributes: [
-          { shaderLocation: 0, offset: 0,  format: 'float32x4' }, // position
-          { shaderLocation: 1, offset: 16, format: 'float32x2' }, // uv
-          { shaderLocation: 2, offset: 24, format: 'float32' },   // texture layer
-          { shaderLocation: 3, offset: 28, format: 'float32x3' }, // normal
-          { shaderLocation: 4, offset: 40, format: 'float32x4' }, // position
-        ]
-      }, {
-        arrayStride: 4,
-        stepMode: 'instance',
-        attributes: [
-          { shaderLocation: 5, offset: 0, format: 'uint32' }, // storage index
-        ]
-      }]
-    },
-    fragment: {
-      module: fragShader,
-      entryPoint: 'main',
-      targets: [{
-        format: presentationFormat,
-        blend: {
-          color: { operation: 'add', srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
-          alpha: { operation: 'add', srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
-        }
-      }]
-    },
-    primitive: {
-      topology: 'triangle-list',
-      frontFace: 'ccw',
-      cullMode: 'back',
-      
-    },
-    depthStencil: {
-      depthWriteEnabled: true,
-      depthCompare: 'less',
-      format: 'depth24plus',
-    },
-    multisample: {
-      count: 4,
-    },
-  })
-  return pipeline
-}
-
-export async function loadShader(url: string, device: GPUDevice): Promise<GPUShaderModule> {
-  const result = await fetch(url)
-  const code = await result.text()
-  return device.createShaderModule({label: url, code})
 }
 
 /** Create a pipeline object with a given layout. */
@@ -185,7 +129,8 @@ export function createPipeline(
   fragShader:         GPUShaderModule,
   layout:             GPUPipelineLayout,
   presentationFormat: GPUTextureFormat,
-  device:             GPUDevice): GPURenderPipeline {
+  device:             GPUDevice,
+  enableDepthBuffer:  boolean = true): GPURenderPipeline {
 
   const pipeline = device.createRenderPipeline({
     label: name,
@@ -199,15 +144,16 @@ export function createPipeline(
         attributes: [
           { shaderLocation: 0, offset: 0,  format: 'float32x4' }, // position
           { shaderLocation: 1, offset: 16, format: 'float32x2' }, // uv
-          { shaderLocation: 2, offset: 24, format: 'float32' },   // texture layer
-          { shaderLocation: 3, offset: 28, format: 'float32x3' }, // normal
-          { shaderLocation: 4, offset: 40, format: 'float32x4' }, // position
+          { shaderLocation: 2, offset: 24, format: 'snorm16x4' }, // normal
+          { shaderLocation: 3, offset: 32, format: 'snorm16x4' }, // tangent
+          { shaderLocation: 4, offset: 40, format: 'snorm16x4' }, // bitangent
+          { shaderLocation: 5, offset: 48, format: 'uint32x4'  }, // textures
         ]
       }, {
         arrayStride: 4,
         stepMode: 'instance',
         attributes: [
-          { shaderLocation: 5, offset: 0, format: 'uint32' }, // storage index
+          { shaderLocation: 6, offset: 0, format: 'uint32' }, // storage index
         ]
       }]
     },
@@ -229,8 +175,8 @@ export function createPipeline(
       
     },
     depthStencil: {
-      depthWriteEnabled: true,
-      depthCompare: 'less',
+      depthWriteEnabled: enableDepthBuffer,
+      depthCompare: enableDepthBuffer ? 'less' : 'always',
       format: 'depth24plus',
     },
     multisample: {

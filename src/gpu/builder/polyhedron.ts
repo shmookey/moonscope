@@ -1,9 +1,11 @@
 /** Polyhedron builder functions. */
 
-import type {Vec3, XMesh, XVertex} from "../types"
+import type {MeshVertex, Vec2, Vec3, XMesh, XVertex} from "../types"
 import type { Polyhedron, Triangle } from "./types"
-import {v3normalize, v3sub, v3add, v3mid} from "./mesh.js"
-const { atan2, sqrt } = Math
+import {setTextures, v3normalize, v3sub, v3add, v3mid} from "./mesh.js"
+import {Float32x2, Float32x3, Snorm16x4, Vertex} from "../vertex.js"
+import {latLonToUnitVec, unitVecToLatLon} from "../common.js"
+const { atan2, sin, cos, tan, sqrt, PI } = Math
 
 /** Create an icosahedron. */
 export function icosahedron(): Polyhedron {
@@ -66,17 +68,33 @@ export function subdividedIcosahedron(n: number): Polyhedron {
 /** Create a mesh from a polyhedron. */
 export function polyhedronMesh(
     p: Polyhedron, 
-    textureId: number,
+    textures: [number, number, number, number],
     useLatLon: boolean): XMesh {
+
   // todo: non-radial normals
   // this next line is kind of pointless because the only polyhedrons we deal
   // with so far are already projected to the unit sphere, i.e. the vertices
   // themselves are their own normal vectors.
   const normals = p.vertices.map(v => v3normalize(v))
+  // this is also questionable: we're going to say the tangent is in the direction
+  // of lines of latitude, and the bitangent is in the direction of lines of longitude
+  const tangents = p.vertices.map(v => {
+    const [lat,lon] = unitVecToLatLon(v)
+    return latLonToUnitVec([lat, lon + PI/2])
+  })
+  const bitangents = p.vertices.map(v => {
+    const [lat,lon] = unitVecToLatLon(v)
+    return latLonToUnitVec([lat + PI/2, lon])
+  })
+
   const uvMap = [[0, 0], [1, 0], [0, 1]]
-  const vertices: XVertex[] = p.faces.flatMap(vertices => vertices.map((vId,i) => {
+  const vertices: MeshVertex[] = p.faces.flatMap(vertices => vertices.map((vId,i) => {
     const [x, y, z] = p.vertices[vId]
-    const [nx, ny, nz] = normals[vId]
+    const position:  Float32x3 = [x,y,z]
+    const normal:    Snorm16x4 = Array.from(normals[vId])    as Snorm16x4
+    const tangent:   Snorm16x4 = Array.from(tangents[vId])   as Snorm16x4
+    const bitangent: Snorm16x4 = Array.from(bitangents[vId]) as Snorm16x4
+    const uv:        Float32x2 = uvMap[i]                    as Float32x2
     let [u, v] = uvMap[i]
 
     if(useLatLon) {
@@ -87,13 +105,15 @@ export function polyhedronMesh(
       v = atan2(z, x)                // longitude
     }
 
-    return [x, y, z, 1, u, v, nx, ny, nz, textureId] as XVertex
+    return Vertex(position, uv, normal, tangent, bitangent, textures)
   }))
   return {
     id: 0,
-    label: 'polyhedron',
+    name: 'polyhedron',
     vertexCount: vertices.length,
-    vertices
+    vertices,
+    indexCount: vertices.length,
+    indices: new Array(vertices.length).fill(0).map((_,i) => i),
   }
 }
 
@@ -182,11 +202,3 @@ export function projectToUnitSphere(p: Polyhedron): Polyhedron {
     vertices: p.vertices.map(v3normalize)
   }
 }
-
-export function testIcosphere(n: number) {
-  const p = subdividedIcosahedron(n)
-  const m = polyhedronMesh(p, 4, true)
-  m.label = `icosphere-${n}`
-  console.log(JSON.stringify(m))
-}
-

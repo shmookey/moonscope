@@ -1,26 +1,22 @@
-//import {vec3} from "gl-matrix"
-import type {Atlas, Camera, FirstPersonCamera, DrawCallDescriptor, Entity, InstanceAllocator, GPUContext, Mat4, Renderable, ResourceBundle, MeshStore, Model, Scene, Renderer, SceneGraph} from './types'
-import {createMainBindGroup, createMainBindGroupLayout, createMainPipeline, createMainPipelineLayout, createMainSampler, createMainUniformBuffer, createPipeline, loadShader} from './pipeline.js'
+import type {Camera, GPUContext, Mat4, Scene, Renderer, SceneGraph, PipelineStore, ShaderStore} from './types'
+import {createMainBindGroup, createMainBindGroupLayout, createMainPipelineLayout, createMainSampler, createMainUniformBuffer, createPipeline} from './pipeline.js'
 import {mat4} from 'gl-matrix'
 import {createAtlas} from './atlas.js'
 import {loadResourceBundle} from './resource.js'
-import {addInstance, createInstanceAllocator, registerAllocation} from './instance.js'
-import {INSTANCE_BLOCK_SIZE, INSTANCE_INDEX_SIZE, UNIFORM_BUFFER_FLOATS, VERTEX_SIZE} from './constants.js'
-import {createMeshStore, getMeshByName} from './mesh.js'
-import {getCameraViewMatrix} from './camera.js'
-
-
-
-const UNIFORM_BUFFER_LENGTH = 2 * 4*4*4
-const tempInstanceData = new Float32Array(INSTANCE_BLOCK_SIZE/4)
+import {createInstanceAllocator} from './instance.js'
+import {INDEX_SIZE, INSTANCE_INDEX_SIZE, UNIFORM_BUFFER_FLOATS, VERTEX_SIZE} from './constants.js'
+import {createMeshStore} from './mesh.js'
+import {updateModelViews} from './scene.js'
 
 
 export async function createRenderer(
     presentationFormat: GPUTextureFormat,
     gpu: GPUContext,
     instanceStorageCapacity: number     = 5000,
-    vertexStorageCapacity: number       = 10000,
-    atlasSize: [number, number, number] = [4096, 4096, 1],
+    vertexStorageCapacity: number       = 20000,
+    indexStorageCapacity: number        = 50000,
+    atlasCapacity: number               = 1000,
+    atlasSize: [number, number, number] = [8192, 8192, 3],
     atlasFormat: GPUTextureFormat       = 'rgba8unorm',
     atlasMipLevels: number              = 6,
     ): Promise<Renderer> {
@@ -28,11 +24,18 @@ export async function createRenderer(
   const outputSize: [number,number] = [gpu.presentationSize.width, gpu.presentationSize.height]
   const uniformData = new Float32Array(UNIFORM_BUFFER_FLOATS)
   const viewMatrix = mat4.create() as Mat4
-  const atlas = createAtlas(gpu.device, atlasSize, atlasFormat, atlasMipLevels)
-  const meshStore = createMeshStore(vertexStorageCapacity, VERTEX_SIZE, gpu.device)
-  const bundle = await loadResourceBundle('/assets/bundle.json', atlas, meshStore, gpu.device)
-  const instanceAllocator = createInstanceAllocator(gpu.device, instanceStorageCapacity)
+  const shaders: ShaderStore = {}
+  const pipelines: PipelineStore = {}
+  const atlas = createAtlas(atlasCapacity, atlasSize, atlasFormat, atlasMipLevels, gpu.device)
+  const meshStore = createMeshStore(vertexStorageCapacity, indexStorageCapacity, VERTEX_SIZE, INDEX_SIZE, gpu.device)
+
   const mainBindGroupLayout = createMainBindGroupLayout(gpu.device)
+  const pipelineLayout = createMainPipelineLayout(
+    mainBindGroupLayout,
+    gpu.device)
+
+  const instanceAllocator = createInstanceAllocator(gpu.device, instanceStorageCapacity)
+  
   const mainSampler = createMainSampler(gpu.device)
   const mainUniformBuffer = createMainUniformBuffer(gpu.device)
   const mainBindGroup = createMainBindGroup(
@@ -42,13 +45,7 @@ export async function createRenderer(
     atlas,
     mainSampler,
     gpu.device)
-  const pipelineLayout = createMainPipelineLayout(
-    mainBindGroupLayout,
-    gpu.device)
-  const mainPipeline = await createMainPipeline(
-    pipelineLayout,
-    presentationFormat,
-    gpu.device)
+
   const depthTexture = gpu.device.createTexture({
     label: 'main-depth-texture',
     size: outputSize,
@@ -58,7 +55,6 @@ export async function createRenderer(
   })
   const depthTextureView = depthTexture.createView()
 
-
   return {
     outputSize,
     uniformData,
@@ -67,10 +63,8 @@ export async function createRenderer(
     mainBindGroupLayout,
     mainUniformBuffer,
     mainSampler,
-    mainPipeline,
     pipelineLayout,
     atlas,
-    bundle,
     instanceAllocator,
     meshStore,
     drawCalls: [],
@@ -81,72 +75,10 @@ export async function createRenderer(
     depthTexture,
     depthTextureView,
     context: gpu,
-    pipelines: {
-      default: mainPipeline
-    },
+    pipelines,
+    shaders,
   }
 }
-
-/** Register a model with the renderer.
- * 
- * Returns the model id.
- */
-//export function registerModel(
-//    name: string,
-//    meshName: string,
-//    maxInstances: number,
-//    state: Renderer): number {
-//  const id = state.nextModelId
-//  const allocationId = registerAllocation(maxInstances, state.instanceAllocator)
-//  const mesh = getMeshByName(meshName, state.meshStore)
-//  const drawCallId = state.nextDrawCallId
-//  const model = { 
-//    id, 
-//    name, 
-//    meshId: mesh.id, 
-//    allocationId,
-//    drawCallId,
-//  }
-//  const drawCall: DrawCallDescriptor = {
-//    id:              drawCallId,
-//    label:           `DrawCall#${drawCallId}=${name}`,
-//    vertexBuffer:    state.meshStore.vertexBuffer,
-//    vertexPointer:   mesh.vertexPointer,
-//    vertexCount:     mesh.vertexCount,
-//    instanceBuffer:  state.instanceAllocator.instanceBuffer,
-//    instancePointer: state.instanceAllocator.allocations[allocationId].instanceIndex * 4,
-//    instanceCount:   0,
-//    bindGroup:       state.mainBindGroup,
-//    pipeline:        state.mainPipeline,
-//  }
-//
-//  state.nextModelId++
-//  state.nextDrawCallId++
-//  state.models.push(model)
-//  state.drawCalls.push(drawCall)
-//  return id
-//}
-
-/** Create an instance of a model.
- * 
- * Returns the instance ID.
- */
-//export function createInstance(
-//    modelMatrix: Mat4,
-//    modelId: number,
-//    state: Renderer): number {
-//  const model = state.models[modelId]
-//  tempInstanceData.set(modelMatrix)
-//  const instanceId = addInstance(
-//    model.allocationId, 
-//    tempInstanceData, 
-//    state.device, 
-//    state.instanceAllocator
-//  )
-//  const drawCall = state.drawCalls[model.drawCallId]
-//  drawCall.instanceCount = state.instanceAllocator.allocations[model.allocationId].numInstances
-//  return instanceId
-//}
 
 /** Render the scene from the view of a given camera. */
 export function renderView(
@@ -172,17 +104,6 @@ export function renderView(
   passEncoder.setBindGroup(0, scene.skybox.uniformBindGroup)
   passEncoder.draw(scene.skybox.vertexCount, 1, 0, 0)
 
-  passEncoder.setPipeline(state.mainPipeline)
-  passEncoder.setBindGroup(0, state.mainBindGroup)
-  for(let drawCall of state.drawCalls) {
-    // todo: optimise rebinding
-    const {vertexBuffer, vertexPointer, instanceBuffer, instancePointer} = drawCall 
-    const verticesLength = drawCall.vertexCount * VERTEX_SIZE
-    const instancesLength = drawCall.instanceCount * INSTANCE_INDEX_SIZE
-    passEncoder.setVertexBuffer(0, vertexBuffer, vertexPointer, verticesLength)
-    passEncoder.setVertexBuffer(1, instanceBuffer, instancePointer, instancesLength)
-    passEncoder.draw(drawCall.vertexCount, drawCall.instanceCount, 0, 0)
-  }
   for(let call of sceneGraph.drawCalls) {
     if(call.instanceCount === 0)
       continue
@@ -191,9 +112,10 @@ export function renderView(
     const instancesLength = call.instanceCount * INSTANCE_INDEX_SIZE
     passEncoder.setPipeline(call.pipeline)
     passEncoder.setBindGroup(0, call.bindGroup)
-    passEncoder.setVertexBuffer(0, vertexBuffer, vertexPointer, verticesLength)
+    passEncoder.setVertexBuffer(0, vertexBuffer)
     passEncoder.setVertexBuffer(1, instanceBuffer, instancePointer, instancesLength)
-    passEncoder.draw(call.vertexCount, call.instanceCount, 0, 0)
+    passEncoder.setIndexBuffer(call.indexBuffer, 'uint32')
+    passEncoder.drawIndexed(call.indexCount, call.instanceCount, call.indexOffset, 0, 0)
   }
 
   passEncoder.end()
@@ -205,6 +127,7 @@ export function renderFrame(scene: Scene, sceneGraph: SceneGraph, state: Rendere
   (gpu.renderPassDescriptor as any).colorAttachments[0].resolveTarget = gpu.context
     .getCurrentTexture()
     .createView()
+  updateModelViews(sceneGraph.views.default, sceneGraph)
   gpu.renderPassDescriptor.depthStencilAttachment = {
     view: state.depthTextureView,
     depthClearValue: 1.0,
@@ -224,20 +147,24 @@ export async function makePipeline(
     name:               string,
     vertexShaderPath:   string,
     fragmentShaderPath: string,
-    renderer:           Renderer): Promise<void> {
+    renderer:           Renderer,
+    enableDepthBuffer:  boolean = true): Promise<void> {
 
   if(renderer.pipelines[name])
     throw new Error(`Pipeline ${name} already exists.`)
+  if(!(vertexShaderPath in renderer.shaders))
+    throw new Error(`Vertex shader ${vertexShaderPath} not loaded.`)
+  if(!(fragmentShaderPath in renderer.shaders))
+    throw new Error(`Fragment shader ${fragmentShaderPath} not loaded.`)
 
-  const vertexShader = await loadShader(vertexShaderPath, renderer.device)
-  const fragShader = await loadShader(fragmentShaderPath, renderer.device)
   const pipeline = createPipeline(
     name, 
-    vertexShader, 
-    fragShader, 
+    renderer.shaders[vertexShaderPath], 
+    renderer.shaders[fragmentShaderPath], 
     renderer.pipelineLayout, 
     renderer.context.presentationFormat, 
-    renderer.device
+    renderer.device,
+    enableDepthBuffer,
   )
   renderer.pipelines[name] = pipeline
 }

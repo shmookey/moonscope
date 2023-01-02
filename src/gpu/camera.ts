@@ -1,18 +1,19 @@
-import {vec3, mat4, quat} from "../../node_modules/gl-matrix/esm/index.js"
+import {vec3, mat4, quat, glMatrix} from 'gl-matrix'
 import type {Camera, FirstPersonCamera, Mat4, Quat, Vec3} from './types'
 const {sin, cos, min, max, PI} = Math
+glMatrix.setMatrixArrayType(Array)
 
-const tempQ_1 = mat4.create()
-const tempQ_2 = mat4.create()
+const tempQ_1 = quat.create()
+const tempQ_2 = quat.create()
 
 /** Create a new camera with the given aspect ratio. 
  * 
  * Starts at the origin pointing in the positive z direction.
  */
 export function createCamera(aspect: number): Camera {
-  const position = vec3.create()
-  const orientation = quat.create()
-  const projection = mat4.create()
+  const position = vec3.create() as Vec3
+  const orientation = quat.create() as Quat
+  const projection = mat4.create() as Mat4
   mat4.perspectiveZO(projection, PI/2, aspect, 0.001, Infinity)
   return {isDirty: true, projection, position, orientation}
 }
@@ -22,7 +23,7 @@ export function createCamera(aspect: number): Camera {
  * Starts at the origin pointing in the positive z direction.
  */
 export function createFirstPersonCamera(): FirstPersonCamera {
-  const position = vec3.create()
+  const position = vec3.create() as Vec3
   position[1] = 1
   return {
     position,

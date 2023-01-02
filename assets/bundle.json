@@ -1,35 +1,38 @@
 {
+  "version": 1,
+  "label": "moonscope asset library",
   "textures": [
     {
-      "label": "default texture",
-      "id":    0,
-      "size":  [ 512, 512 ],
-      "src":   "/assets/texture/default.png"
+      "label":     "default",
+      "id":        0,
+      "size":      [ 512, 512 ],
+      "src":       "/assets/texture/default.png"
     },
     {
-      "label":   "grid-square",
-      "id":      1,
-      "size":    [ 512, 512 ],
-      "src":     "/assets/texture/grid.svg",
-      "srcType": "svg"
+      "label":     "sand/colour",
+      "id":        1,
+      "size":      [ 1024, 1024 ],
+      "src":       "/assets/texture/sand/colour.jpg",
+      "wrappable": true
     },
     {
-      "label":   "white-square",
-      "id":      2,
-      "size":    [ 512, 512 ],
-      "src":     "/assets/texture/white.png"
+      "label":     "sand/normal",
+      "id":        2,
+      "size":      [ 1024, 1024 ],
+      "src":       "/assets/texture/sand/normal.jpg",
+      "wrappable": true
     },
     {
-      "label":   "default-triangle",
-      "id":      3,
-      "size":    [ 512, 512 ],
-      "src":     "/assets/texture/default-triangle.png"
+      "label":    "dish/colour",
+      "id":       3,
+      "size":     [ 2048, 2048 ],
+      "src":      "/assets/texture/dish/BLACK/ANTENNA_0.8M_BASE.png"
     },
     {
-      "label":   "moon",
+      "label":   "dish/normal",
       "id":      4,
-      "size":    [ 1024, 512 ],
-      "src":     "/assets/texture/moon.jpg"
+      "size":    [ 2048, 2048 ],
+      "src":     "/assets/texture/dish/ANTENNA_0.8M_NORMAL.png"
     }
   ],
   "meshes": [
@@ -37,34 +40,174 @@
       "name":        "ground",
       "vertexCount": 6,
       "src":         "/assets/mesh/ground.json",
-      "srcType":     "json"
-    },{
-      "name":        "moon",
-      "vertexCount": 960,
-      "src":         "/assets/mesh/icosphere-2-latlon.json",
       "srcType":     "json",
-      "texRemap":    { "4": 4 },
-      "prescale":    173.74
-    },{
+      "prescale":    1000,
+      "prescaleUV":  1000
+    },
+    {
+      "name":        "icosphere-3",
+      "vertexCount": 3840,
+      "src":         "/assets/mesh/generated/icosphere-3.json",
+      "srcType":     "json"
+    },
+    {
       "name":        "earth",
       "vertexCount": 15360,
-      "src":         "/assets/mesh/icosphere-4.json",
-      "srcType":     "json",
-      "prescale":    637.1,
-      "texRemap":    { "4": 3 }
+      "src":         "/assets/mesh/generated/earth.json",
+      "srcType":     "json"
+    },
+    {
+      "name":        "antenna-1",
+      "vertexCount": 743,
+      "src":         "/assets/mesh/imported/0_8_ANTENA_01.json",
+      "srcType":     "json"
+    },
+    {
+      "name":        "antenna-2",
+      "vertexCount": 292,
+      "src":         "/assets/mesh/imported/0_8_ANTENA_02.json",
+      "srcType":     "json"
+    },
+    {
+      "name":        "antenna-3",
+      "vertexCount": 543,
+      "src":         "/assets/mesh/imported/0_8_ANTENA_03.json",
+      "srcType":     "json"
+    }
+  ],
+  "shaders": [
+    {
+      "name": "entity-pbr-wrapped.fragment",
+      "src":  "/shader/entity-pbr-wrapped.frag.wgsl"
     },{
-      "name":        "sun",
-      "vertexCount": 960,
-      "src":         "/assets/mesh/icosphere-2.json",
-      "srcType":     "json",
-      "texRemap":    { "3": 2 },
-      "prescale":    69.6340
+      "name": "entity-pbr-wrapped.vertex",
+      "src":  "/shader/entity-pbr-wrapped.vert.wgsl"
+    },
+    {
+      "name": "autogrid-sphere.fragment",
+      "src":  "/shader/autogrid-sphere.frag.wgsl"
     },{
-      "name":        "star",
-      "vertexCount": 12,
-      "src":         "/assets/mesh/tetrahedron.json",
-      "srcType":     "json",
-      "prescale":    1
+      "name": "autogrid.vertex",
+      "src":  "/shader/autogrid.vert.wgsl"
+    }
+  ],
+  "pipelines": [
+    {
+      "name":           "entity-pbr-wrapped",
+      "vertexShader":   "entity-pbr-wrapped.vertex",
+      "fragmentShader": "entity-pbr-wrapped.fragment",
+      "depthWrite":     true
+    },
+    {
+      "name":           "autogrid-sphere",
+      "vertexShader":   "autogrid.vertex",
+      "fragmentShader": "autogrid-sphere.fragment",
+      "depthWrite":     true
+    }
+  ],
+  "scenes": [
+    {
+      "name": "default",
+      "views": [
+        {
+          "name": "default",
+          "projection": {
+            "type":   "perspective",
+            "fovy":   80,
+            "aspect": "auto",
+            "near":   0.1,
+            "far":    "Infinity"
+          }
+        }
+      ],
+      "models": [
+        {
+          "name":         "floor:sand",
+          "mesh":         "ground",
+          "pipeline":     "entity-pbr-wrapped",
+          "maxInstances": 1
+        },
+        {
+          "name":         "sphere",
+          "mesh":         "icosphere-3",
+          "pipeline":     "autogrid-sphere",
+          "maxInstances": 5
+        },
+        {
+          "name":         "earth",
+          "mesh":         "earth",
+          "pipeline":     "entity-pbr-wrapped",
+          "maxInstances": 1
+        },
+        {
+          "name":         "antenna-1",
+          "mesh":         "antenna-1",
+          "pipeline":     "entity-pbr-wrapped",
+          "maxInstances": 1
+        },
+        {
+          "name":         "antenna-2",
+          "mesh":         "antenna-2",
+          "pipeline":     "entity-pbr-wrapped",
+          "maxInstances": 1
+        },
+        {
+          "name":         "antenna-3",
+          "mesh":         "antenna-3",
+          "pipeline":     "entity-pbr-wrapped",
+          "maxInstances": 1
+        }
+      ],
+      "root": {
+        "type": "transform",
+        "children": [
+          {
+            "name":      "camera-fps",
+            "type":      "camera",
+            "view":      "default"
+          },
+          {
+            "name":      "floor",
+            "type":      "model",
+            "modelName": "floor:sand"
+          },
+          {
+            "name":      "nearball",
+            "type":      "model",
+            "modelName": "sphere",
+            "transform": {
+              "type":        "trs",
+              "translation": [7, 5, -4]
+            }
+          },
+          {
+            "name": "antenna",
+            "type": "transform",
+            "transform": {
+              "type":        "trs",
+              "translation": [0,    0.6125, -6],
+              "scale":       [0.05, 0.05,    0.05]
+            },
+            "children": [
+              {
+                "name":      "antenna-1",
+                "type":      "model",
+                "modelName": "antenna-1"
+              },
+              {
+                "name":      "antenna-2",
+                "type":      "model",
+                "modelName": "antenna-2"
+              },
+              {
+                "name":      "antenna-3",
+                "type":      "model",
+                "modelName": "antenna-3"
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }
