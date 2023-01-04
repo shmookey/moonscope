@@ -12,21 +12,21 @@
       "label":     "sand/colour",
       "id":        1,
       "size":      [ 1024, 1024 ],
-      "src":       "/assets/texture/sand/colour.jpg",
+      "src":       "/assets/texture/moon-1/colour.jpg",
       "wrappable": true
     },
     {
       "label":     "sand/normal",
       "id":        2,
       "size":      [ 1024, 1024 ],
-      "src":       "/assets/texture/sand/normal.jpg",
+      "src":       "/assets/texture/moon-1/normal.jpg",
       "wrappable": true
     },
     {
       "label":    "dish/colour",
       "id":       3,
       "size":     [ 2048, 2048 ],
-      "src":      "/assets/texture/dish/BLACK/ANTENNA_0.8M_BASE.png"
+      "src":      "/assets/texture/dish/UMRELLA/ANTENNA_0.8M_BASE.png"
     },
     {
       "label":   "dish/normal",
@@ -57,19 +57,19 @@
       "srcType":     "json"
     },
     {
-      "name":        "antenna-1",
+      "name":        "antenna-mount",
       "vertexCount": 743,
       "src":         "/assets/mesh/imported/0_8_ANTENA_01.json",
       "srcType":     "json"
     },
     {
-      "name":        "antenna-2",
+      "name":        "antenna-boom",
       "vertexCount": 292,
       "src":         "/assets/mesh/imported/0_8_ANTENA_02.json",
       "srcType":     "json"
     },
     {
-      "name":        "antenna-3",
+      "name":        "antenna-dish",
       "vertexCount": 543,
       "src":         "/assets/mesh/imported/0_8_ANTENA_03.json",
       "srcType":     "json"
@@ -140,20 +140,20 @@
           "maxInstances": 1
         },
         {
-          "name":         "antenna-1",
-          "mesh":         "antenna-1",
+          "name":         "antenna-mount",
+          "mesh":         "antenna-mount",
           "pipeline":     "entity-pbr-wrapped",
           "maxInstances": 1
         },
         {
-          "name":         "antenna-2",
-          "mesh":         "antenna-2",
+          "name":         "antenna-boom",
+          "mesh":         "antenna-boom",
           "pipeline":     "entity-pbr-wrapped",
           "maxInstances": 1
         },
         {
-          "name":         "antenna-3",
-          "mesh":         "antenna-3",
+          "name":         "antenna-dish",
+          "mesh":         "antenna-dish",
           "pipeline":     "entity-pbr-wrapped",
           "maxInstances": 1
         }
@@ -185,24 +185,26 @@
             "type": "transform",
             "transform": {
               "type":        "trs",
-              "translation": [0,    0.6125, -6],
+              "translation": [0,    0.6125, -2],
               "scale":       [0.05, 0.05,    0.05]
             },
             "children": [
               {
-                "name":      "antenna-1",
+                "name":      "antenna-mount",
                 "type":      "model",
-                "modelName": "antenna-1"
+                "modelName": "antenna-mount"
               },
               {
-                "name":      "antenna-2",
+                "name":      "antenna-boom",
                 "type":      "model",
-                "modelName": "antenna-2"
-              },
-              {
-                "name":      "antenna-3",
-                "type":      "model",
-                "modelName": "antenna-3"
+                "modelName": "antenna-boom",
+                "children": [
+                  {
+                    "name":      "antenna-dish",
+                    "type":      "model",
+                    "modelName": "antenna-dish"
+                  }
+                ]
               }
             ]
           }

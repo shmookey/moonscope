@@ -5,12 +5,13 @@ import * as Render from './gpu/render.js'
 import { createInputState } from './input.js'
 import { getLayerAsImageBitmap } from './gpu/atlas.js'
 import {vec3, mat4, quat} from 'gl-matrix'
-import type {Mat4, Renderer, SceneGraph, ViewDescriptor, Quat} from './gpu/types.js'
+import type {Mat4, Renderer, SceneGraph, ViewDescriptor, Quat, ModelNode} from './gpu/types.js'
 import {applyFirstPersonCamera, getCameraViewMatrix, moveFirstPersonCameraForward, moveFirstPersonCameraRight, moveFirstPersonCameraUp, moveFirstPersonCameraUpScale, rotateFirstPersonCamera} from './gpu/camera.js'
 import {celestialBodyModelMatrix, generateUniverse, Universe} from './universe.js'
 import {getMeshByName} from './gpu/mesh.js'
-import {attachNode, createCameraNode, createModelNode, createScene, createSceneGraph, createSceneView, createTransformNode, registerSceneGraphModel, setNodeTransform} from './gpu/scene.js'
+import {attachNode, createCameraNode, createModelNode, createScene, createSceneGraph, createSceneView, createTransformNode, getNodeByName, registerSceneGraphModel, setNodeTransform} from './gpu/scene.js'
 import {loadResourceBundle} from './gpu/resource.js'
+import {AntennaObject, setAntennaAltitude, setAntennaAzimuth} from './antenna.js'
 const { sin, cos, log, sqrt, min, max, random, PI } = Math
 
 const MOUSE_SENSITIVITY = 0.001
@@ -59,86 +60,6 @@ function* layerGen(): Iterator<Sky.LayerData> {
   }
 }
 
-function setupSceneGraph(renderer: Renderer): SceneGraph {
-  const universe = generateUniverse(0)
-  app.universe = universe
-
-  const sceneGraph = createSceneGraph(renderer)
-  const viewDescriptor: ViewDescriptor = {
-    type:   'perspective',
-    fovy:   PI / 2,
-    aspect: renderer.outputSize[0] / renderer.outputSize[1],
-    near:   0.001,
-    far:    Infinity,
-  }
-  createSceneView('default', viewDescriptor, sceneGraph)
-  //registerSceneGraphModel('sun',             'sun',             'entity',             1,    sceneGraph)
-  //registerSceneGraphModel('earth',           'earth',           'entity',             1,    sceneGraph)
-  //registerSceneGraphModel('moon',            'moon',            'entity',             1,    sceneGraph)
-  //registerSceneGraphModel('star',            'star',            'entity',          1000,    sceneGraph)
-  registerSceneGraphModel('ground-textured',   'ground',          'entity-pbr-wrapped', 1,    sceneGraph)
-  //registerSceneGraphModel('ground-grid',     'ground',          'autogrid',           1,    sceneGraph)
-  //registerSceneGraphModel('sphere',          'earth',           'autogrid-sphere',    1,    sceneGraph)
-
-  // Sun
-  //const sunNode = createModelNode('sun', sceneGraph)
-  //mat4.fromTranslation(tempMat4_1, universe.localBodies.sun.position)
-  //setNodeTransform(sunNode, tempMat4_1, sceneGraph)
-  //attachNode(sunNode, sceneGraph.root, sceneGraph)
-
-  // Earth
-  //const earthNode = createTransformNode(sceneGraph)
-  //const earthRadius = universe.localBodies.earth.radius
-  //mat4.fromTranslation(tempMat4_1, universe.localBodies.earth.position)
-  //setNodeTransform(earthNode, tempMat4_1, sceneGraph)
-  //attachNode(earthNode, sunNode, sceneGraph)
-  //app.earthNode = earthNode
-
-  // Moon
-  //const moonNode = createModelNode('moon', sceneGraph)
-  //mat4.fromTranslation(tempMat4_1, universe.localBodies.moon.position)
-  //setNodeTransform(moonNode, tempMat4_1, sceneGraph)
-  ////attachNode(moonNode, earthNode, sceneGraph)
-  //app.moonNode = moonNode
-
-  // Ground
-  //const groundGridNode = createModelNode('ground-grid', sceneGraph)
-  const groundTextureNode = createModelNode('ground-textured', sceneGraph)
-  //mat4.fromTranslation(tempMat4_1, [0, 0.1, 0]) //-earthRadius])
-  //mat4.rotateX(tempMat4_1,  tempMat4_1, -PI/2)
-  //mat4.scale(tempMat4_1, tempMat4_1, [1000, 1, 1000])
-  //setNodeTransform(groundNode, tempMat4_1, sceneGraph)
-  //setNodeTransform(groundGridNode, tempMat4_1, sceneGraph)
-  attachNode(groundTextureNode, sceneGraph.root, sceneGraph)
-  //attachNode(groundGridNode, sceneGraph.root, sceneGraph)
-
-  // FPS camera
-  const cameraNode = createCameraNode('default', sceneGraph)
-  app.cameraNode = cameraNode
-  attachNode(cameraNode, sceneGraph.root, sceneGraph)
-  
-  // Test sphere
-  //const sphereNode = createModelNode('sphere', sceneGraph)
-  //mat4.fromTranslation(tempMat4_1, [0, 1, 0])
-  //mat4.scale(tempMat4_1, tempMat4_1, [0.01, 0.01, 0.01])
-  //setNodeTransform(sphereNode, tempMat4_1, sceneGraph)
-  //attachNode(sphereNode, sceneGraph.root, sceneGraph)
-  //app.sphereNode = sphereNode
-
-  // Stars (cosmos)
-  //const cosmosNode = createTransformNode(sceneGraph)
-  //for(let body of universe.celestialBodies) {
-  //  const bodyNode = createModelNode('star', sceneGraph)
-  //  celestialBodyModelMatrix(body, tempMat4_1)
-  //  setNodeTransform(bodyNode, tempMat4_1, sceneGraph)
-  //  body.node = bodyNode
-  //  attachNode(bodyNode, cosmosNode, sceneGraph)
-  //}
-  //attachNode(cosmosNode, sceneGraph.root, sceneGraph) 
-  
-   
-  return sceneGraph
-}
 
 /** return true to force a repaint. */
 function updateWorldState(dT: number, sceneGraph: SceneGraph): boolean {
@@ -198,6 +119,16 @@ async function main(): Promise<void> {
   const sceneState = await createScene(renderer.mainUniformBuffer, gpu)
   const sceneGraph = bundle.scenes[0] //setupSceneGraph(renderer)
   const mainCamera = sceneGraph.views.default.camera
+  const antennaNode = getNodeByName('antenna', sceneGraph)
+  const antennaObject: AntennaObject = {
+    mount: antennaNode.children[0] as ModelNode,
+    boom:  antennaNode.children[1] as ModelNode,
+    dish:  antennaNode.children[1].children[0] as ModelNode,
+    altitude: 35 * PI/180,
+    azimuth: 0,
+  }
+  app.antenna = antennaObject
+
   sceneState.firstPersonCamera.position[1] = CAMERA_HEIGHT
   app.sceneGraph = sceneGraph
   
@@ -236,6 +167,9 @@ async function main(): Promise<void> {
         break
       case 'Backspace':
         getAtlasAsImage()
+        break
+      case 'KeyZ':
+        setAntennaAltitude(PI/2, antennaObject)
         break
       default:
         //console.log(ev.code)
@@ -307,18 +241,26 @@ async function main(): Promise<void> {
 
       // Handle keyboard movement
       if( inputState.keyDown['ArrowUp']) {
-        moveFirstPersonCameraForward(-movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
-        cameraMoved = true
+        //moveFirstPersonCameraForward(-movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
+        //cameraMoved = true
+        setAntennaAltitude(antennaObject.altitude + 0.001 * dt, antennaObject)
+        requireRepaint = true
       } else if( inputState.keyDown['ArrowDown']) {
-        moveFirstPersonCameraForward(movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
-        cameraMoved = true
+        //moveFirstPersonCameraForward(movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
+        //cameraMoved = true
+        setAntennaAltitude(antennaObject.altitude - 0.001 * dt, antennaObject)
+        requireRepaint = true
       }
       if( inputState.keyDown['ArrowLeft']) {
-        moveFirstPersonCameraRight(-movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
-        cameraMoved = true
+        setAntennaAzimuth(antennaObject.azimuth - 0.001 * dt, antennaObject)
+        requireRepaint = true
+        //moveFirstPersonCameraRight(-movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
+        //cameraMoved = true
       } else if( inputState.keyDown['ArrowRight']) {
-        moveFirstPersonCameraRight(movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
-        cameraMoved = true
+        setAntennaAzimuth(antennaObject.azimuth + 0.001 * dt, antennaObject)
+        requireRepaint = true
+        //moveFirstPersonCameraRight(movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
+        //cameraMoved = true
       }
       if(inputState.keyDown['KeyW'] ) {
         moveFirstPersonCameraForward(-movementSpeed * dt, sceneState.firstPersonCamera)

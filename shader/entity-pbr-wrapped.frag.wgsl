@@ -30,7 +30,7 @@ struct AtlasData {
 @group(0) @binding(3) var          mySampler:    sampler;
 @group(0) @binding(4) var          atlas:        texture_2d_array<f32>;
 
-const lightPos    = vec3<f32>(  0.0,  10.0, -10.0);
+const lightPos    = vec3<f32>(  3.0,  10.0, -3.0);
 const lightColour = vec3<f32>(  1.0,  1.0, 1.0);
 
 
@@ -55,8 +55,9 @@ fn main(
   let tbn          = mat3x3<f32>(tangent, bitangent, normal);
   let mappedNormal = normalize(tbn * texelNormal);
   let lightDir     = normalize(camSpaceLightPos - worldPos);
-  let lightDist    = min(1, 20 / distance(camSpaceLightPos, worldPos));
+  let lightDist    = min(1, 30 / distance(camSpaceLightPos, worldPos));
   let lightDiffuse = max(dot(lightDir, mappedNormal), 0.0);
-  return vec4(texelColour.rgb * lightDiffuse * lightDist, texelColour.a); 
+  let lightAmbient = 0.2;
+  return vec4(texelColour.rgb * ((lightDiffuse * lightDist) + lightAmbient), texelColour.a); 
 }
 
