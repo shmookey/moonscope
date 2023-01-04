@@ -1,0 +1,70 @@
+It is appealing to model a scene with a structure that reflects the spatial
+layout and relationships between objects. In a classic example, a player
+controls a mounted knight. The camera is positioned relative to the rider, the
+rider is positioned relative to the horse, and the horse in turn is positioned
+relative to the environment. Thus, when the horse moves, the rider and the
+camera move with it. Such a hierarchy of objects is called a scene graph.
+Generally it is more convenient if the content of the scene graph can remain
+abstract from the grim particulars of whatever the rendering engine needs to do
+in order to render the scene correctly and efficiently. Achieving a clean
+separation presents challenges with astronomical distances, especially on the
+web where 64-bit floating point numbers are not available to GPU rendering
+pipelines. The 32-bit floats that are available in WebGL and WebGPU are
+insufficiently precise to represent astronomical distances, forcing users of a
+scene graph implementation which is not designed for rendering at this scale to
+resort to tricks such as scaling down parts of the scene or rendering a
+composite of scene graphs with multiple passes. Both of these workarounds
+introduce their own sets of technical issues, and neither preserves the logical
+spatial structure of the model in its representation. Tricks such as these are
+acceptable when the distant objects are of mostly aesthetic interest, but where
+an accurate model is essential they are burdensome to the developer, who must
+now maintain two models and keep them in sync. Motivated by challenges that I
+encountered in developing a web-based astronomy tool and renderer, this essay
+describes a clean and efficient approach to rendering at the astronomical scale
+using facilities available to web applications.
+
+I am hesitant to invoke the phrase "scientific visualization" in this context,
+because of the baggage that term carries. My present work is in this category,
+but it is not the first time that I have encountered issues arising from the
+limited precision available to rendering pipelines. Eventually, every graphics
+programmer contends with the problem of dynamic range in rendering, where large
+and small-scale structure in a scene come into conflict. Even an earth-scale
+model will run into issues with placement on the surface, and a far smaller
+scale than that is required to encounter the problem of Z-fighting in the depth
+buffer. Rendering at the astronomical scale is an extreme case of a common
+problem, it is only the needs of the application and my own personal aesthetic
+of design that have led me to this particular solution. The rendering system
+that I have been developing in tandem with the application for radio astronomy
+is one that I intend to use in unrelated future projects that may require 3D
+graphics, and perhaps to release separately as an open-source library. Thus, I
+prefer an ergonomic approach suited to general-purpose rendering, rather than
+one tailored to the needs of scientific visualization. The solution that I
+describe starts at the scene graph and ends at the vertex shader, there are
+already a variety of widely-used techniques to resolve the fragment-ordering
+problem once the scene's geometry has been mapped into screen space. the
+problem I wish to address is in getting it there.
+
+In short: we introduce a new matrix, the "observation matrix", as an input to
+the vertex shader. This is a 4x4 matrix applied in between the model and view
+matrices of the conventional model-view-projection system, which performs (at
+least conceptually) a projection in world-space: distant objects are made to
+be closer (and for perspective projections, smaller) so as to be geometrically
+indistinguishable when transformed into screen space. However, since distant
+coordinates are problematic in the first place, we also use a modified model
+matrix: instead of transforming the model's vertices into world space, we use
+an intermediate "reference space" modelling the coordinate system of a
+particular frame of reference. Reference frames may be chosen explicitly or
+determined automatically, they are merely a grouping of objects whose vertices
+may be adequately represented in a single coordinate system. Since frames of
+reference are the organising principle of all scene graphs, this pattern
+appears naturally in any scene description and does not require any special
+accomodation from the user of the rendering system, apart from the choice of
+whether to nominate which nodes will define reference frames. From a scene
+graph implementation perspective, these nodes break the chain of parent-child
+matrix multiplications in the determination of the model matrix, the children
+of a reference frame node are positioned from the origin. The observation
+matrix thus also encodes the cumulative transform inherited by the reference
+frame. 
+
+
+

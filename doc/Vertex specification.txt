@@ -1,0 +1,46 @@
+This file documents vertex attributes and the shader interface generally.
+
+Vertex (shader interface)
+
+  0  position    float32x4  16    Position coordinates
+  1  uv          float32x2   8    Texture coordinates
+  2  normal      snorm16x4   8    Normal vector + spare
+  3  tangent     snorm16x4   8    Tangent vector + spare
+  4  bitangent   snorm16x4   8    Bitangent vector + spare
+  5  textures    uint32x4   16    Texture IDs (colour, normal, specular, occlusion)
+  6  instanceId  uint32      4    Instance slot, for instance uniforms
+
+  Size: 68 bytes
+
+
+
+Vertex (storage)
+
+SLOT BYTE NAME      FORMAT    TYPE     SIZE  DESCRIPTION
+   0    0 position  float32x4 vec4<f32>  16  Position coordinates
+   1   16 uv        float32x2 vec2<f32>   8  Texture coordinates
+   2   24 normal    snorm16x4 vec4<f32>   8  Normal vector + spare
+   3   32 tangent   snorm16x4 vec4<f32>   8  Tangent vector + spare
+   4   40 bitangent snorm16x4 vec4<f32>   8  Bitangent vector + spare
+   5   48 textures  uint32x4  vec4<u32>  16  Texture IDs
+
+  Size: 64 bytes
+
+
+Uniforms struct
+
+  mat4x4<f32>             view           View matrix
+  mat4x4<f32>             projection     Projection matrix
+  array<LightSource, 16>  lightSources   Light source array
+  f32                     time           Time in milliseconds
+
+  Size: 1152 bytes
+
+LightSource struct
+
+  vec4<f32>  position     Light position
+  vec4<f32>  colour       Light colour
+  vec4<f32>  attenuation  Light attenuation
+  vec4<f32>  direction    Light direction (xyz + spread angle)
+
+  Size: 64 bytes
