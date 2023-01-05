@@ -1,5 +1,5 @@
 import {mat4} from 'gl-matrix'
-import type {ModelNode} from './gpu/types'
+import type {ModelNode} from './ratite/types'
 const { min, max, PI } = Math
 
 export type AntennaObject = {

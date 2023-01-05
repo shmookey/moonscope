@@ -1,5 +1,5 @@
-import type {GPUContext, Renderable} from './gpu/types'
-import {loadShader} from './gpu/gpu.js'
+import type {GPUContext, Renderable} from './ratite/types'
+import {loadShader} from './ratite/gpu.js'
 import {
   Float16Array
 } from "../node_modules/@petamoriken/float16/browser/float16.mjs";

@@ -1,4 +1,4 @@
-import type {BaseNode, Camera, CameraNode, DrawCallDescriptor, FirstPersonCamera, GPUContext, Mat4, Model, ModelNode, Node, NodeDescriptor, Renderer, Scene, SceneGraph, SceneGraphDescriptor, TransformNode, Vec2, Vec4, View, ViewDescriptor} from "./types"
+import type {BaseNode, Camera, CameraNode, DrawCallDescriptor, FirstPersonCamera, GPUContext, Mat4, Model, ModelNode, Node, NodeDescriptor, Renderer, Scene, SceneGraph, SceneGraphDescriptor, TransformDescriptor, TransformNode, Vec2, Vec4, View, ViewDescriptor} from "./types"
 import * as Skybox from './skybox.js'
 import {createCamera, createFirstPersonCamera, getCameraViewMatrix} from './camera.js'
 import { mat4, vec4, quat, glMatrix } from 'gl-matrix'
@@ -100,23 +100,7 @@ export function createNodeFromDescriptor(
   }
   node.name = descriptor.name
   if(descriptor.transform) {
-    const transform = descriptor.transform
-    if(transform.type == 'matrix') {
-      node.transform = mat4.fromValues(...transform.values) as Mat4
-    } else if(transform.type == 'trs') {
-      const rotation = transform.rotation ?? [0, 0, 0, 1]
-      const translation = transform.translation ?? [0, 0, 0]
-      const scale = transform.scale ?? [1, 1, 1]
-      mat4.fromRotationTranslationScale(node.transform, rotation, translation, scale)
-    } else if(transform.type == 'globe') { 
-      const translation = mat4.create()
-      mat4.fromTranslation(translation, [0, transform.radius, 0])
-      const direction = latLonToUnitVec(transform.coords.map(x => x*PI/180) as Vec2)
-      const rotation = quat.create()
-      quat.rotationTo(rotation, [0,1,0], direction)
-      mat4.fromQuat(node.transform, rotation)
-      mat4.mul(node.transform, node.transform, translation)
-    }
+    setTransform(descriptor.transform, node)
   }
   if(descriptor.children) {
     for(let childDescriptor of descriptor.children) {
@@ -125,6 +109,26 @@ export function createNodeFromDescriptor(
     }
   }
   return node
+}
+
+/** Set the transform of a node, overwriting any previous transform. */
+export function setTransform(transform: TransformDescriptor, node: Node) {
+  if(transform.type == 'matrix') {
+    node.transform = mat4.fromValues(...transform.values) as Mat4
+  } else if(transform.type == 'trs') {
+    const rotation = transform.rotation ?? [0, 0, 0, 1]
+    const translation = transform.translation ?? [0, 0, 0]
+    const scale = transform.scale ?? [1, 1, 1]
+    mat4.fromRotationTranslationScale(node.transform, rotation, translation, scale)
+  } else if(transform.type == 'globe') { 
+    const translation = mat4.create()
+    mat4.fromTranslation(translation, [0, transform.radius, 0])
+    const direction = latLonToUnitVec(transform.coords.map(x => x*PI/180) as Vec2)
+    const rotation = quat.create()
+    quat.rotationTo(rotation, [0,1,0], direction)
+    mat4.fromQuat(node.transform, rotation)
+    mat4.mul(node.transform, node.transform, translation)
+  }
 }
 
 /** Create a view. */
@@ -429,14 +433,15 @@ function detachNodeFromRoot(node: Node, sceneGraph: SceneGraph): void {
 
 /** Retrieve the first matching element, or null. */
 export function getNodeByName(name: string, sceneGraph: SceneGraph): Node | null {
-  return getNodeByName_(name, sceneGraph.root)
+  return getChildNodeByName(name, sceneGraph.root)
 }
 
-function getNodeByName_(name: string, node: Node): Node | null {
+/** Retrieve the first matching child of a node, or null. */
+export function getChildNodeByName(name: string, node: Node): Node | null {
   if(node.name === name)
     return node
   for(const child of node.children) {
-    const match = getNodeByName_(name, child)
+    const match = getChildNodeByName(name, child)
     if(match !== null)
       return match
   }

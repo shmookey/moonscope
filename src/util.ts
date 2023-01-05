@@ -1,4 +1,4 @@
-import type {Quat, Vec3} from './gpu/types';
+import type {Quat, Vec3} from './ratite/types';
 import {vec3, mat4, quat} from '../node_modules/gl-matrix/esm/index.js'
 
 const RANDOM_SEED = 'hello, world'

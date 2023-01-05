@@ -1,9 +1,9 @@
 /** OBJ file importer. */
 
 import * as fs from 'node:fs/promises'
-import {objToXMesh} from './build/gpu/builder/objparse.js'
-import { serialiseMeshToJSON } from './build/gpu/mesh.js'
-import { setTextures } from './build/gpu/builder/mesh.js'
+import {objToXMesh} from './build/ratite/builder/objparse.js'
+import { serialiseMeshToJSON } from './build/ratite/mesh.js'
+import { setTextures } from './build/ratite/builder/mesh.js'
 
 async function main() {
   if(process.argv.length !== 4)

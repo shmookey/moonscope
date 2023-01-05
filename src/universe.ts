@@ -1,6 +1,6 @@
 /** universe.ts -- Celestial bodies and their orbits. */
 
-import type {Vec3, Quat, Node} from './gpu/types';
+import type {Vec3, Quat, Node} from './ratite/types';
 import {vec3, mat4, quat} from '../node_modules/gl-matrix/esm/index.js'
 import {random, randomUnitVec3, randomUnitQuat} from './util.js';
 

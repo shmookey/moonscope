@@ -1,9 +1,9 @@
 /** node script to build asset files */
 
 import * as fs from 'node:fs/promises'
-import * as Polyhedron from './build/gpu/builder/polyhedron.js'
-import { square, uniformScaleMeshPosition, uniformScaleMeshPositionUV } from './build/gpu/builder/mesh.js'
-import { serialiseMeshToJSON } from './build/gpu/mesh.js'
+import * as Polyhedron from './build/ratite/builder/polyhedron.js'
+import { square, uniformScaleMeshPosition, uniformScaleMeshPositionUV } from './build/ratite/builder/mesh.js'
+import { serialiseMeshToJSON } from './build/ratite/mesh.js'
 
 async function main() {
   const ground = makeGround()
