@@ -1,4 +1,4 @@
-import type {BaseNode, Camera, CameraNode, DrawCallDescriptor, FirstPersonCamera, GPUContext, Mat4, Model, ModelNode, Node, NodeDescriptor, Renderer, Scene, SceneGraph, SceneGraphDescriptor, TransformDescriptor, TransformNode, Vec2, Vec4, View, ViewDescriptor} from "./types"
+import type {BaseNode, Camera, CameraNode, DrawCallDescriptor, FirstPersonCamera, GPUContext, Mat4, Model, ModelNode, Node, NodeDescriptor, Quat, Renderer, Scene, SceneGraph, SceneGraphDescriptor, TransformDescriptor, TransformNode, Vec2, Vec4, View, ViewDescriptor} from "./types"
 import * as Skybox from './skybox.js'
 import {createCamera, createFirstPersonCamera, getCameraViewMatrix} from './camera.js'
 import { mat4, vec4, quat, glMatrix } from 'gl-matrix'
@@ -17,7 +17,7 @@ export async function createScene(
   uniformBuffer: GPUBuffer,
   gpu: GPUContext): Promise<Scene> {
 
-  const skybox = await Skybox.create(uniformBuffer, gpu)
+  const skybox = await Skybox.createSkybox(uniformBuffer, gpu)
   const defaultCamera = createCamera(gpu.aspect)
   const firstPersonCamera = createFirstPersonCamera()
   
@@ -38,6 +38,7 @@ export function createSceneGraph(renderer: Renderer): SceneGraph {
     parent:    null,
     root:      null,
     children:  [],
+    visible:   true,
   }
   rootNode.root = rootNode
   return {
@@ -99,37 +100,162 @@ export function createNodeFromDescriptor(
     throw 'not implemented'
   }
   node.name = descriptor.name
-  if(descriptor.transform) {
+  if(descriptor.transform)
     setTransform(descriptor.transform, node)
-  }
   if(descriptor.children) {
     for(let childDescriptor of descriptor.children) {
       const child = createNodeFromDescriptor(childDescriptor, sceneGraph)
       attachNode(child, node, sceneGraph)
     }
   }
+  if('visible' in descriptor)
+    setNodeVisibility(descriptor.visible, node, sceneGraph)
   return node
 }
 
-/** Set the transform of a node, overwriting any previous transform. */
-export function setTransform(transform: TransformDescriptor, node: Node) {
-  if(transform.type == 'matrix') {
-    node.transform = mat4.fromValues(...transform.values) as Mat4
-  } else if(transform.type == 'trs') {
-    const rotation = transform.rotation ?? [0, 0, 0, 1]
-    const translation = transform.translation ?? [0, 0, 0]
-    const scale = transform.scale ?? [1, 1, 1]
-    mat4.fromRotationTranslationScale(node.transform, rotation, translation, scale)
-  } else if(transform.type == 'globe') { 
-    const translation = mat4.create()
-    mat4.fromTranslation(translation, [0, transform.radius, 0])
-    const direction = latLonToUnitVec(transform.coords.map(x => x*PI/180) as Vec2)
-    const rotation = quat.create()
-    quat.rotationTo(rotation, [0,1,0], direction)
-    mat4.fromQuat(node.transform, rotation)
-    mat4.mul(node.transform, node.transform, translation)
+/** Set the visibility of a node.
+ * 
+ * All models in the node's subtree are affected, but the `visible` property of
+ * descendant nodes is not changed. Rather, they are added and removed from the
+ * scene graph's draw call list as needed. Light sources (not implemented yet)
+ * will be updated by writing to the global uniform buffer.
+ */
+export function setNodeVisibility(visible: boolean, node: Node, sceneGraph: SceneGraph): void {
+  // TODO: don't needlessly show and then hide newly created invisible nodes
+
+  if(node.visible === visible) return
+  node.visible = false
+  if(!node.root) return
+
+  if(visible) {
+    activateNode(node, sceneGraph)
+  } else {
+    activateNode(node, sceneGraph)
   }
 }
+
+/** Deactivate a node and all its visible descendants for drawing.
+ *  
+ * This is used by `attachNode`, `detachNode` and `setNodeVisibility` to update
+ * draw calls when the effective visibility of a node changes. It should not be
+ * used elsewhere, as this will lead to inconsistent state the next time that
+ * one of these functions is called.
+ */
+function deactivateNode(node: Node, sceneGraph: SceneGraph): void {
+  if(!node.visible) return
+  if(node.nodeType === 'model') {
+    const { instanceAllocator, device } = sceneGraph.renderer
+    const drawCall = sceneGraph.drawCalls[node.drawCallId]
+    deactivateInstance(node.instanceId, instanceAllocator, device)
+    drawCall.instanceCount--
+  }
+  for(let child of node.children)
+    deactivateNode(child, sceneGraph)
+}
+
+/** Activate a node and all its visible descendants for drawing.
+ *  
+ * This is used by `attachNode`, `detachNode` and `setNodeVisibility` to update
+ * draw calls when the effective visibility of a node changes. It should not be
+ * used elsewhere, as this will lead to inconsistent state the next time that
+ * one of these functions is called.
+ */
+function activateNode(node: Node, sceneGraph: SceneGraph): void {
+  if(!node.visible) return
+  if(node.nodeType === 'model') {
+    const { instanceAllocator, device } = sceneGraph.renderer
+    const drawCall = sceneGraph.drawCalls[node.drawCallId]
+    activateInstance(node.instanceId, instanceAllocator, device)
+    drawCall.instanceCount++
+  }
+  for(let child of node.children)
+    activateNode(child, sceneGraph)
+}
+
+
+/** Set the transform of a node, overwriting any previous transform. */
+export function setTransform(transform: TransformDescriptor, node: Node): void {
+  computeMatrix(transform, node.transform)
+}
+
+const applyTransform_tempMat4: Mat4 = mat4.create() as Mat4
+
+/** Apply a transformation `A` to a node's existing transform matrix `B` by the matrix multiplication `B*A`. */
+export function applyTransform(transform: TransformDescriptor, node: Node): void {
+  const initial = node.transform
+  const matrix = computeMatrix(transform, applyTransform_tempMat4)
+  mat4.multiply(node.transform, initial, matrix)
+}
+
+const applyPreTransform_tempMat4: Mat4 = mat4.create() as Mat4
+
+/** Apply a transformation `A` to a node's existing transform matrix `B` by the matrix multiplication `A*B`. */
+export function applyPreTransform(transform: TransformDescriptor, node: Node): void {
+  const initial = node.transform
+  const matrix = computeMatrix(transform, applyTransform_tempMat4)
+  mat4.multiply(node.transform, matrix, initial)
+}
+
+const computeMatrix_tempQuat: Quat = quat.create() as Quat
+const computeMatrix_tempMat4: Mat4 = mat4.create() as Mat4
+
+/** Get a transfom matrix for a TransformDescriptor. */
+export function computeMatrix(transform: TransformDescriptor, out: Mat4): Mat4 {
+  switch(transform.type) {
+  case 'matrix':
+     for(let i = 0; i < 16; i++) 
+       out[i] = transform.matrix[i]
+     return out
+  case 'trs':
+    return mat4.fromRotationTranslationScale(out, 
+      transform.rotation    ?? [0, 0, 0, 1], 
+      transform.translation ?? [0, 0, 0], 
+      transform.scale       ?? [1, 1, 1]
+    ) as Mat4
+  case 'globe':
+    mat4.fromTranslation(out, [0, transform.radius, 0])
+    quat.rotationTo(computeMatrix_tempQuat, 
+      [0,1,0], 
+      latLonToUnitVec(transform.coords.map(x => x*PI/180) as Vec2)
+    )
+    mat4.fromQuat(computeMatrix_tempMat4, computeMatrix_tempQuat)
+    return mat4.mul(out, computeMatrix_tempMat4, out) as Mat4
+  }
+}
+
+/** Clone a node.
+ * 
+ * The node and all its descendants are copied and the new structure is created
+ * in a detached state. Camera nodes are cloned with a null view.
+ */
+export function cloneNode(node: Node, sceneGraph: SceneGraph): Node {
+  const descriptor: any = {
+    name: node.name,
+    type: node.nodeType,
+    transform: {
+      type:   'matrix',
+      matrix: mat4.clone(node.transform) as Mat4,
+    },
+  }
+  switch(node.nodeType) {
+  case 'model':
+    descriptor.modelName = node.modelName
+    break
+  case 'camera':
+    descriptor.view = null
+    break
+  case 'transform':
+    break
+  case 'light':
+    break
+  }
+  const clone = createNodeFromDescriptor(descriptor, sceneGraph)
+  for(let child of node.children) {
+    attachNode(cloneNode(child, sceneGraph), clone, sceneGraph)
+  }
+  return clone
+}
+
 
 /** Create a view. */
 export function createSceneView(
@@ -201,6 +327,7 @@ export function createModelNode(
     instanceId: instanceId,
     modelName:  modelName,
     drawCallId: model.drawCallId,
+    visible:    true,
   }
   sceneGraph.nodes.push(node)
   return node
@@ -225,6 +352,7 @@ export function createCameraNode(viewName: string | null, sceneGraph: SceneGraph
     transform:  mat4.create() as Mat4,
     children:   [],
     view:       view,
+    visible:    true,
   }
   sceneGraph.nodes.push(node)
   if(view)
@@ -240,6 +368,7 @@ export function createTransformNode(sceneGraph: SceneGraph): Node {
     root:       null,
     transform:  mat4.create() as Mat4,
     children:   [],
+    visible:    true,
   }
   sceneGraph.nodes.push(node)
   return node
@@ -292,11 +421,13 @@ export function registerSceneGraphModel(
 
 /** Attach a node to a parent node.
  * 
- * If the parent node is not attached to the scene graph, this function merely
- * sets the parent and root properties of the node. If the parent node is
- * attached to the scene graph, this function also updates the model matrix
- * of the node and the associated draw call. This process is applied recursively
- * to all of the node's children.
+ * The attachment process is as follows:
+ * 1. Set the node's parent property to the parent.
+ * 2. Add the node to the parent's children list.
+ * 3. If the parent's root property is null, return.
+ * 4. Recursively update the root for the node subtree.
+ * 5. If any ancestor node is hidden, return.
+ * 6. Recursively activate the node subtree for drawing. 
  */
 export function attachNode(
   node: Node,
@@ -309,126 +440,61 @@ export function attachNode(
   node.parent = parent
   parent.children.push(node)
 
-  if(parent.root) {
-      const transform: Mat4 = mat4.create() as Mat4
-      let ancestor = parent
-      while(ancestor) {
-        mat4.mul(transform, ancestor.transform, transform)
-        ancestor = ancestor.parent
-      }
-      setupNewlyAttachedNode(node, transform, sceneGraph)
-    }
-}
+  if(!parent.root)
+    return
 
-/** Recursively set up a node that has just been attached to the scene graph.
- * Both `parent` and `parent.root` must be set and `root` must not be set.
- * Model nodes will have their model matrices updated and instance counts 
- * incremented in their respective draw calls. A cumulative matrix transform
- * is passed down through the traversal, including all the ancestor
- * transformations before the node to be set up.
- */
-function setupNewlyAttachedNode(node: Node, transform: Mat4, sceneGraph: SceneGraph): void {
-  if(node.root || !node.parent || !node.parent.root)
-    throw new Error('Invalid node attachment state.')
-  node.root = node.parent.root
-  mat4.mul(transform, transform, node.transform) // transform is now model matrix
-  
-  if(node.nodeType === 'model') { 
-    const { instanceAllocator, device } = sceneGraph.renderer
-    activateInstance(node.instanceId, instanceAllocator, device)
-    //updateInstanceData(transform, node.instanceId, instanceAllocator, device)
-    const drawCall = sceneGraph.drawCalls[node.drawCallId]
-    drawCall.instanceCount++
-  } else if(node.nodeType === 'camera' && node.view) {
-    mat4.invert(node.view.viewMatrix, transform)
-  }
+  walkSubtree(n => n.root = parent.root, node)
 
-  
+  if(!isNodeVisible(node))
+    return
 
-  for(const child of node.children) {
-    setupNewlyAttachedNode(child, mat4.clone(transform) as Mat4, sceneGraph)
-  }
-}
-
-/** Set the transform of a node.
- * 
- * If the node is attached to the scene graph and the node is a model node,
- * this function also updates the model matrix of the node. This process is
- * applied recursively to all of the node's children.
- * 
- * TODO: consider caching the model matrix of each node to avoid recomputing
- * the ancestor transforms.
- */
-export function setNodeTransform(node: Node, transform: Mat4, sceneGraph: SceneGraph): void {
-  node.transform = mat4.clone(transform) as Mat4
-  if(node.root) {
-    const modelTransform: Mat4 = mat4.create() as Mat4
-    let ancestor = node.parent
-    while(ancestor) {
-      mat4.mul(modelTransform, ancestor.transform, modelTransform)
-      ancestor = ancestor.parent
-    }
-    updateNodeTransform(node, modelTransform, sceneGraph)
-  }
-}
-
-/** Recursively update the model matrix of an attached node and its children.
- * The transform argument is the cumulative transform matrix of all the node's
- * ancestors.
- */
-function updateNodeTransform(node: Node, transform: Mat4, sceneGraph: SceneGraph): void {
-  mat4.mul(transform, transform, node.transform) // transform is now model matrix
-  if(node.nodeType === 'model') {
-    const { instanceAllocator, device } = sceneGraph.renderer
-    //updateInstanceData(transform, node.instanceId, instanceAllocator, device)
-  } else if(node.nodeType === 'camera' && node.view) {
-    mat4.invert(node.view.viewMatrix, transform)
-  }
-  for(const child of node.children) {
-    updateNodeTransform(child, mat4.clone(transform) as Mat4, sceneGraph)
-  }
+  activateNode(node, sceneGraph)
 }
 
 /** Detach a node from its parent.
  * 
- * If the node is attached to the scene graph, this function also updates the
- * instance counts of the associated draw calls. This process is applied
- * recursively to all of the node's children.
- * 
- * TODO: this is pretty inefficient
+ * If the node is attached to the scene graph, the whole node subtree has its
+ * root property reset to null. If the node is visible, the whole node subtree
+ * is deactivated for drawing.
  */
 export function detachNode(node: Node, sceneGraph: SceneGraph): void {
   if(!node.parent)
     throw new Error('Node is not attached to a parent node.')
 
-  const parent = node.parent
-  const index = parent.children.indexOf(node)
+  // Remove parent/child relationship
+  const index = node.parent.children.indexOf(node)
   if(index === -1)
     throw new Error('Scene graph integrity error: node is not a child of its parent.')
-  parent.children.splice(index, 1)
+  node.parent.children.splice(index, 1)
   node.parent = null
-  detachNodeFromRoot(node, sceneGraph)
+
+  if(!node.root)
+    return
+  
+  if(isNodeVisible(node))
+    deactivateNode(node, sceneGraph)
+
+  walkSubtree(n => n.root = null, node)
 }
 
-/** Recursive detach a node and its children from the scene graph, without
- * detaching them from their immediate parents. Should only be called from
- * detachNode after a node that was attached to the scene graph has been
- * detached from its parent.
- */
-function detachNodeFromRoot(node: Node, sceneGraph: SceneGraph): void {
-  if(!node.root)
-    throw new Error('Node is not attached to the scene graph.')
 
-  node.root = null
-  if(node.nodeType === 'model') {
-    const { device, instanceAllocator } = sceneGraph.renderer
-    deactivateInstance(node.instanceId, instanceAllocator, device)
-    const drawCall = sceneGraph.drawCalls[node.drawCallId]
-    drawCall.instanceCount--
-  }
-  for(const child of node.children) {
-    detachNodeFromRoot(child, sceneGraph)
-  }
+/** Call a function on a node and all of its children. */
+function walkSubtree(fn: (node: Node) => void, node: Node): void {
+  fn(node)
+  for(const child of node.children)
+    walkSubtree(fn, child)
+}
+
+/** Is the node visible? 
+ * 
+ * A node is visible if it is attached to the scene, its `visible` property is
+ * true, and all of its ancestors are visible.
+ */
+export function isNodeVisible(node: Node): boolean {
+  if(!node.root) return false
+  for(let ancestor = node; ancestor; ancestor = ancestor.parent)
+    if(!ancestor.visible) return false
+  return true
 }
 
 /** Retrieve the first matching element, or null. */

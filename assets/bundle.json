@@ -161,51 +161,22 @@
       "root": {
         "type": "transform",
         "children": [
-          {
-            "name":      "camera-fps",
-            "type":      "camera",
-            "view":      "default"
-          },
-          {
-            "name":      "floor",
-            "type":      "model",
-            "modelName": "floor:sand"
-          },
-          {
-            "name":      "nearball",
-            "type":      "model",
-            "modelName": "sphere",
-            "transform": {
-              "type":        "trs",
-              "translation": [7, 5, -4]
-            }
-          },
-          {
-            "name": "antenna",
-            "type": "transform",
-            "transform": {
-              "type":        "trs",
-              "translation": [0,    0.6125, -2],
-              "scale":       [0.05, 0.05,    0.05]
-            },
+          { "name": "camera-fps", "type": "camera", "view": "default" },
+          { "name": "floor", "type": "model", "modelName": "floor:sand" },
+          { "name": "nearball", "type": "model", "modelName": "sphere", 
+            "transform": {"type": "trs", "translation": [0, 0, 0]} },
+          { "type": "transform", "transform": {"type": "globe", "radius": 1, "coords": [45, 30]}, "visible": false,
             "children": [
-              {
-                "name":      "antenna-mount",
-                "type":      "model",
-                "modelName": "antenna-mount"
-              },
-              {
-                "name":      "antenna-boom",
-                "type":      "model",
-                "modelName": "antenna-boom",
+              { "type": "model", "modelName": "sphere", "transform": {"type": "trs", "translation": [0, 1, 0]} }
+            ]},
+          { "name": "antenna", "type": "transform", 
+            "transform": {"type":"trs", "translation": [2, 0.6125, -2], "scale": [0.05, 0.05, 0.05]},
+            "children": [
+              { "name": "antenna-mount", "type": "model", "modelName": "antenna-mount" },
+              { "name": "antenna-boom", "type": "model", "modelName": "antenna-boom",
                 "children": [
-                  {
-                    "name":      "antenna-dish",
-                    "type":      "model",
-                    "modelName": "antenna-dish"
-                  }
-                ]
-              }
+                  { "name": "antenna-dish", "type": "model", "modelName": "antenna-dish" }
+                ]}
             ]
           }
         ]

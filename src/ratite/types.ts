@@ -228,11 +228,6 @@ export type SubTexture = {
 }
 export type Region = [number, number, number, number]  // x, y, width, height
 
-/** Atlas metadata GPU storage buffer record. */
-//export type SubTextureGPURecord = {
-
-
-
 /** Describes rendering work to be done.
  * May be combined to optimise the number of draw calls.
  */
@@ -395,6 +390,12 @@ export type SkyboxState = {
  * The SceneGraph implementation is responsible for ordering draw calls so that
  * objects are rendered correctly and without unnecessary and costly changes to
  * the GPU state.
+ * 
+ * Nodes have a `visible` property which may be used to hide them and all of
+ * their descendants from the scene. This is useful for temporarily disabling
+ * objects without having to destroy them. Models are not drawn, light sources
+ * are "turned off", but cameras remain linked to their respective views and 
+ * may be used to render the scene.
  */
 export type SceneGraph = {
   label?:         string,
@@ -415,12 +416,13 @@ export type Node = ModelNode
 
 /** Base node type. */
 export interface BaseNode {
-  name?:     string,
-  nodeType:  'model' | 'transform' | 'camera' | 'light',
-  transform: Mat4,
-  parent:    Node | null,
-  root:      Node | null,
-  children:  Node[],
+  name?:     string,        // Human-readable name for convenient lookup
+  nodeType:  NodeType,      // Node type
+  transform: Mat4,          // Local transform matrix
+  parent:    Node | null,   // Parent node, if part of a tree
+  root:      Node | null,   // Root node, if attached to scene
+  children:  Node[],        // Child nodes
+  visible:   boolean,       // Visibility toggle
 }
 
 export interface LightSourceNode extends BaseNode {
@@ -507,6 +509,7 @@ export interface OrthographicViewDescriptor extends BaseViewDescriptor {
   far:    number,
 }
 
+export type NodeType = 'model' | 'transform' | 'camera' | 'light'
 
 /** Node descriptor. */
 export type NodeDescriptor = ModelNodeDescriptor
@@ -517,9 +520,10 @@ export type NodeDescriptor = ModelNodeDescriptor
 /** Base node type. */
 export interface BaseNodeDescriptor {
   name?:      string,
-  type:       'model' | 'transform' | 'camera' | 'light',
+  type:       NodeType,
   transform?: TransformDescriptor,
   children?:  NodeDescriptor[],
+  visible?:   boolean,
 }
 
 export interface LightSourceNodeDescriptor extends BaseNodeDescriptor {
@@ -547,7 +551,7 @@ export interface CameraNodeDescriptor extends BaseNodeDescriptor {
   view: string,
 }
 
-export type TransformDescriptor = Mat4Descriptor
+export type TransformDescriptor = MatrixDescriptor
                                 | TranslationRotationScaleDescriptor
                                 | GlobeTransformDescriptor
 
@@ -555,9 +559,9 @@ export interface TransformDescriptorBase {
   type: 'matrix' | 'trs' | 'globe',
 }
 
-export interface Mat4Descriptor extends TransformDescriptorBase {
+export interface MatrixDescriptor extends TransformDescriptorBase {
   type:   'matrix',
-  values: Mat4,
+  matrix: Mat4,
 }
 
 export interface TranslationRotationScaleDescriptor extends TransformDescriptorBase {

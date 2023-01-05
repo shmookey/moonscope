@@ -5,11 +5,11 @@ import * as Render from './ratite/render.js'
 import { createInputState } from './input.js'
 import { getLayerAsImageBitmap } from './ratite/atlas.js'
 import {vec3, mat4, quat} from 'gl-matrix'
-import type {Mat4, Renderer, SceneGraph, ViewDescriptor, Quat, ModelNode} from './ratite/types.js'
+import type {Mat4, Renderer, SceneGraph, ViewDescriptor, Quat, ModelNode, MatrixDescriptor} from './ratite/types.js'
 import {applyFirstPersonCamera, getCameraViewMatrix, moveFirstPersonCameraForward, moveFirstPersonCameraRight, moveFirstPersonCameraUp, moveFirstPersonCameraUpScale, rotateFirstPersonCamera} from './ratite/camera.js'
 import {celestialBodyModelMatrix, generateUniverse, Universe} from './universe.js'
 import {getMeshByName} from './ratite/mesh.js'
-import {attachNode, createCameraNode, createModelNode, createScene, createSceneGraph, createSceneView, createTransformNode, getNodeByName, registerSceneGraphModel, setNodeTransform} from './ratite/scene.js'
+import {attachNode, createCameraNode, createModelNode, createScene, createSceneGraph, createSceneView, createTransformNode, getNodeByName, registerSceneGraphModel, setTransform} from './ratite/scene.js'
 import {loadResourceBundle} from './ratite/resource.js'
 import {AntennaObject, setAntennaAltitude, setAntennaAzimuth} from './antenna.js'
 const { sin, cos, log, sqrt, min, max, random, PI } = Math
@@ -22,6 +22,10 @@ const app: any = {};
 const tempMat4_1 = mat4.create() as Mat4
 const tempMat4_2 = mat4.create() as Mat4
 const tempQ_1 = quat.create() as Quat
+const tempMatrixTransform: MatrixDescriptor = {
+  type: 'matrix',
+  matrix: tempMat4_1,
+}
 
 type SourceSpec = [
   number,  // X
@@ -138,7 +142,7 @@ async function main(): Promise<void> {
       Sky.applyLayers(count, visState, gpu)
       Sky.updateSkyUniforms(visState.layers, skyEntity, gpu)
       Sky.renderSkyToTexture(skyEntity, gpu)
-      Skybox.writeTextures(skyEntity.outputTexture, sceneState.skybox, gpu)
+      Skybox.writeSkyboxTextures(skyEntity.outputTexture, sceneState.skybox, gpu)
       elems.layerCount.innerHTML = visState.layers.toString()
     }
     //GPU.frame(gpu)
@@ -299,7 +303,8 @@ async function main(): Promise<void> {
     mat4.fromQuat(tempMat4_1, tempQ_1)
     mat4.fromTranslation(tempMat4_2, sceneState.cameras[0].position)
     mat4.multiply(tempMat4_1, tempMat4_2, tempMat4_1)
-    setNodeTransform(mainCamera, tempMat4_1, sceneGraph)
+    tempMatrixTransform.matrix = tempMat4_1
+    setTransform(tempMatrixTransform, mainCamera)
   }
   aTerribleWayOfUpdatingTheCamera_ReallyBad()
   Render.renderFrame(sceneState, sceneGraph, renderer, gpu)

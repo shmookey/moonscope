@@ -48,7 +48,7 @@ const VERTICES = [
 const TEXTURE_FORMAT = 'rgba8unorm'
 
 
-export async function create(uniformBuffer: GPUBuffer, gpu: GPUContext): Promise<SkyboxState> {
+export async function createSkybox(uniformBuffer: GPUBuffer, gpu: GPUContext): Promise<SkyboxState> {
   const vertexData = new Float32Array(VERTICES)
   
   const vertexBuffer = gpu.device.createBuffer({
@@ -156,7 +156,7 @@ export async function create(uniformBuffer: GPUBuffer, gpu: GPUContext): Promise
   }
 }
 
-export function writeTextures(texture: GPUTexture, state: SkyboxState, gpu: GPUContext) {
+export function writeSkyboxTextures(texture: GPUTexture, state: SkyboxState, gpu: GPUContext) {
   const src = {texture}
   const [width, height] = [1024,1024]
   const commandEncoder = gpu.device.createCommandEncoder()
