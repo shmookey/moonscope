@@ -1,12 +1,12 @@
 {
   "label": "ground",
   "vertices":[
-    {"position": [-1,0,-1,1], "uv": [0,0], "normal": [0,1,0,0], "tangent": [1,0,0,0], "bitangent": [0,0,-1,0], "textures": [1,2,0,0]},
-    {"position": [ 1,0, 1,1], "uv": [1,1], "normal": [0,1,0,0], "tangent": [1,0,0,0], "bitangent": [0,0,-1,0], "textures": [1,2,0,0]},
-    {"position": [ 1,0,-1,1], "uv": [1,0], "normal": [0,1,0,0], "tangent": [1,0,0,0], "bitangent": [0,0,-1,0], "textures": [1,2,0,0]},
-    {"position": [-1,0,-1,1], "uv": [0,0], "normal": [0,1,0,0], "tangent": [1,0,0,0], "bitangent": [0,0,-1,0], "textures": [1,2,0,0]},
-    {"position": [-1,0, 1,1], "uv": [0,1], "normal": [0,1,0,0], "tangent": [1,0,0,0], "bitangent": [0,0,-1,0], "textures": [1,2,0,0]},
-    {"position": [ 1,0, 1,1], "uv": [1,1], "normal": [0,1,0,0], "tangent": [1,0,0,0], "bitangent": [0,0,-1,0], "textures": [1,2,0,0]}
+    {"position": [-1,0,-1,1], "uv": [0,0], "normal": [0,1,0,0], "tangent": [1,0,0,0], "bitangent": [0,0,-1,0], "textures": [1,2,6,0]},
+    {"position": [ 1,0, 1,1], "uv": [1,1], "normal": [0,1,0,0], "tangent": [1,0,0,0], "bitangent": [0,0,-1,0], "textures": [1,2,6,0]},
+    {"position": [ 1,0,-1,1], "uv": [1,0], "normal": [0,1,0,0], "tangent": [1,0,0,0], "bitangent": [0,0,-1,0], "textures": [1,2,6,0]},
+    {"position": [-1,0,-1,1], "uv": [0,0], "normal": [0,1,0,0], "tangent": [1,0,0,0], "bitangent": [0,0,-1,0], "textures": [1,2,6,0]},
+    {"position": [-1,0, 1,1], "uv": [0,1], "normal": [0,1,0,0], "tangent": [1,0,0,0], "bitangent": [0,0,-1,0], "textures": [1,2,6,0]},
+    {"position": [ 1,0, 1,1], "uv": [1,1], "normal": [0,1,0,0], "tangent": [1,0,0,0], "bitangent": [0,0,-1,0], "textures": [1,2,6,0]}
   ],
   "indices":[0, 1, 2, 3, 4, 5]
 }

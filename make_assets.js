@@ -6,9 +6,10 @@ import { square, uniformScaleMeshPosition, uniformScaleMeshPositionUV } from './
 import { serialiseMeshToJSON } from './build/ratite/mesh.js'
 
 async function main() {
-  const ground = makeGround()
-  const icosphere = await makeIcosphere(3)
-  const earth = await makeEarth()
+  const ground     = makeGround()
+  const icosphere1 = await makeIcosphere(1)
+  const icosphere3 = await makeIcosphere(3)
+  const earth      = await makeEarth()
 }
 
 function makeGround() {

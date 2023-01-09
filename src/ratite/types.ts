@@ -406,6 +406,12 @@ export type SceneGraph = {
   renderer:       Renderer,
   nextDrawCallId: number,
   views:          { [name: string]: View }, // Named view objects, connect to cameras
+  bindGroup:      GPUBindGroup,
+  uniformBuffer:  GPUBuffer,
+  uniformData:    ArrayBuffer,
+  uniformFloats:  Float32Array,
+  uniformView:    DataView,
+  lightingState:  LightingState,
 }
 
 /** Scene node. */
@@ -425,9 +431,10 @@ export interface BaseNode {
   visible:   boolean,       // Visibility toggle
 }
 
+/** Light source node. */
 export interface LightSourceNode extends BaseNode {
-  nodeType:  'light',
-  intensity: number,
+  nodeType:    'light',
+  lightSource: LightSource,
 }
 
 /** Model node, a type of leaf node. */
@@ -526,9 +533,18 @@ export interface BaseNodeDescriptor {
   visible?:   boolean,
 }
 
+/** Light source node descriptor.
+ * 
+ * TODO: Model the different light types with objects.
+ */
 export interface LightSourceNodeDescriptor extends BaseNodeDescriptor {
-  type:      'light',
-  intensity: number,
+  type:         'light',
+  lightType?:   LightSourceType,
+  attenuation?: Vec4,
+  ambient?:     Vec4,
+  diffuse?:     Vec4,
+  specular?:    Vec4,
+  cone?:        Vec2,
 }
 
 /** Model node, a type of leaf node. */
@@ -607,8 +623,7 @@ export type ModelDescriptor = {
 export type Renderer = {
   viewMatrix:          Mat4,
   uniformData:         Float32Array,
-  mainBindGroup:       GPUBindGroup,
-  mainBindGroupLayout: GPUBindGroupLayout,
+  bindGroupLayout:     GPUBindGroupLayout,
   mainUniformBuffer:   GPUBuffer,
   mainSampler:         GPUSampler,
   pipelineLayout:      GPUPipelineLayout,
@@ -626,6 +641,7 @@ export type Renderer = {
   context:             GPUContext,
   pipelines:           PipelineStore,
   shaders:             ShaderStore,
+  msaaCount:           number,
 }
 
 export type GPUContext = {
@@ -638,4 +654,66 @@ export type GPUContext = {
   entities: Renderable[];
   presentationSize: { width: number; height: number };
   aspect: number;
+}
+
+
+
+//
+//    LIGHTING
+//
+
+export type LightSourceType = 'point' | 'directional' | 'spot'
+
+export interface LightSource {
+  type:        LightSourceType, // Type of light source
+  id:          number,          // Unique ID for light source
+  slot:        number | null,   // Buffer slot for active light source
+  position:    Vec4,            // Position of light source in view space
+  direction:   Vec4,            // Direction of light source in view space
+  attenuation: Vec4,            // Attenuation coefficients
+  ambient:     Vec4,            // Ambient colour
+  diffuse:     Vec4,            // Diffuse colour
+  specular:    Vec4,            // Specular colour
+  cone:        Vec2,            // Inner and outer cone angles
+}
+
+export type LightSourceDescriptor = PointLightDescriptor 
+                                  | DirectionalLightDescriptor
+                                  | SpotLightDescriptor
+
+export interface BaseLightSourceDescriptor {
+  type?:        LightSourceType, // Type of light source
+  attenuation?: Vec4,            // Attenuation coefficients
+  ambient?:     Vec4,            // Ambient colour
+  diffuse?:     Vec4,            // Diffuse colour
+  specular?:    Vec4,            // Specular colour
+}
+
+export interface PointLightDescriptor extends BaseLightSourceDescriptor {
+  type?:     'point',
+  position?: Vec4,
+}
+
+export interface DirectionalLightDescriptor extends BaseLightSourceDescriptor {
+  type?:      'directional',
+  direction?: Vec4,
+}
+
+export interface SpotLightDescriptor extends BaseLightSourceDescriptor {
+  type?:      'spot',
+  position?:  Vec4,
+  direction?: Vec4,
+  cone?:      Vec2, // inner and outer cone angles
+}
+
+export type LightingState = {
+  bufferCapacity: number,         // Maximum number of lights in buffer
+  bufferUsage:    number,         // Current number of lights in buffer
+  buffer:         GPUBuffer,      // Uniform buffer to store light data
+  bufferData:     ArrayBuffer,    // Local copy of buffer data
+  bufferView:     DataView,       // View of buffer data
+  lightSources:   LightSource[],  // List of light source records indexed by ID
+  slots:          LightSource[],  // List of active light sources in slot order
+  nextSourceID:   number,         // Next light source ID to allocate
+  device:         GPUDevice,      // GPU device context
 }

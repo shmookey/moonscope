@@ -21,7 +21,7 @@ export async function initGPU(canvas: HTMLCanvasElement): Promise<GPUContext> {
     size: presentationSize,
     format: presentationFormat,
     usage: GPUTextureUsage.RENDER_ATTACHMENT,
-    sampleCount: 4,
+    sampleCount: 1,
   })
   const msaaView: GPUTextureView = msaaTexture.createView()
   const renderPassDescriptor: GPURenderPassDescriptor = {

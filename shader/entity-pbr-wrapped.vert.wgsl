@@ -1,14 +1,16 @@
 struct VertexOutput {
-  @builtin(position) Position: vec4<f32>,  // position in screen space
-  @location(0)       worldPos: vec3<f32>,  // position in world space
-  @location(1)       uv:       vec2<f32>,  // position in texture
-  @location(2)       uvColour: vec3<f32>,  // colour texel: x, y, layer (atlas coordinates)
-  @location(3)       uvNormal: vec3<f32>,  // normal texel: x, y, layer (atlas coordinates)
-  @location(4)       texColour: vec4<f32>, // position and size of colour texture
-  @location(5)       texNormal: vec4<f32>, // position and size of normal texture
-  @location(6)       normal:    vec3<f32>, // normal vector
-  @location(7)       tangent:   vec3<f32>, // tangent vector
-  @location(8)       bitangent: vec3<f32>, // bitangent vector
+  @builtin(position) Position:    vec4<f32>,  // position in screen space
+  @location(0)       worldPos:    vec3<f32>,  // position in world space
+  @location(1)       uv:          vec2<f32>,  // position in texture
+  @location(2)       uvColour:    vec3<f32>,  // colour texel: x, y, layer (atlas coordinates)
+  @location(3)       uvNormal:    vec3<f32>,  // normal texel: x, y, layer (atlas coordinates)
+  @location(4)       uvSpecular:  vec3<f32>,  // specular texel: x, y, layer (atlas coordinates)
+  @location(5)       texColour:   vec4<f32>,  // position and size of colour texture
+  @location(6)       texNormal:   vec4<f32>,  // position and size of normal texture
+  @location(7)       texSpecular: vec4<f32>,  // position and size of specular texture
+  @location(8)       normal:      vec3<f32>,  // normal vector
+  @location(9)       tangent:     vec3<f32>,  // tangent vector
+  @location(10)      bitangent:   vec3<f32>,  // bitangent vector
 }
 
 struct Uniforms {
@@ -36,8 +38,8 @@ struct AtlasData {
 }
 
 @group(0) @binding(0) var<uniform> uniforms:     Uniforms;
-@group(0) @binding(1) var<storage> instanceData: InstanceData;
-@group(0) @binding(2) var<storage> atlasData:    AtlasData;
+@group(0) @binding(2) var<storage> instanceData: InstanceData;
+@group(0) @binding(3) var<storage> atlasData:    AtlasData;
 
 fn extractRotation(m: mat4x4<f32>) -> mat4x4<f32> {
   var c0 = m[0];
@@ -66,9 +68,10 @@ fn main(
   @location(6) instanceSlot:  u32,
 ) -> VertexOutput {
   var output: VertexOutput;
-  let modelView = instanceData.data[instanceSlot].modelView;
-  let texColour = atlasData.data[textures.x];
-  let texNormal = atlasData.data[textures.y];
+  let modelView    = instanceData.data[instanceSlot].modelView;
+  let texColour    = atlasData.data[textures.x];
+  let texNormal    = atlasData.data[textures.y];
+  let texSpecular  = atlasData.data[textures.z];
   let viewRotation = extractRotation(modelView);
   //let model        = modelView * invert(uniforms.view);
 
@@ -76,10 +79,12 @@ fn main(
   output.Position    = uniforms.projection  * camSpacePos;
   output.worldPos    = camSpacePos.xyz;
   output.uv          = uv;
-  output.uvColour    = vec3(uv * texColour.size + texColour.position, f32(texColour.layer));
-  output.uvNormal    = vec3(uv * texNormal.size + texNormal.position, f32(texNormal.layer));
-  output.texColour   = vec4(texColour.position, texColour.size);
-  output.texNormal   = vec4(texNormal.position, texNormal.size);
+  output.uvColour    = vec3(uv * texColour.size   + texColour.position,   f32(texColour.layer));
+  output.uvNormal    = vec3(uv * texNormal.size   + texNormal.position,   f32(texNormal.layer));
+  output.uvSpecular  = vec3(uv * texSpecular.size + texSpecular.position, f32(texSpecular.layer));
+  output.texColour   = vec4(texColour.position,   texColour.size);
+  output.texNormal   = vec4(texNormal.position,   texNormal.size);
+  output.texSpecular = vec4(texSpecular.position, texSpecular.size);
   output.normal      = (viewRotation * vec4(normalize(normal),    1.0)).xyz;
   output.tangent     = (viewRotation * vec4(normalize(tangent),   1.0)).xyz;
   output.bitangent   = (viewRotation * vec4(normalize(bitangent), 1.0)).xyz; 

@@ -1,16 +1,19 @@
-import type {BaseNode, Camera, CameraNode, DrawCallDescriptor, FirstPersonCamera, GPUContext, Mat4, Model, ModelNode, Node, NodeDescriptor, Quat, Renderer, Scene, SceneGraph, SceneGraphDescriptor, TransformDescriptor, TransformNode, Vec2, Vec4, View, ViewDescriptor} from "./types"
+import type {BaseNode, Camera, CameraNode, DrawCallDescriptor, FirstPersonCamera, GPUContext, LightSourceDescriptor, LightSourceNode, LightSourceNodeDescriptor, Mat4, Model, ModelNode, Node, NodeDescriptor, Quat, Renderer, Scene, SceneGraph, SceneGraphDescriptor, TransformDescriptor, TransformNode, Vec2, Vec4, View, ViewDescriptor} from "./types"
 import * as Skybox from './skybox.js'
 import {createCamera, createFirstPersonCamera, getCameraViewMatrix} from './camera.js'
 import { mat4, vec4, quat, glMatrix } from 'gl-matrix'
 import {activateInstance, addInstance, deactivateInstance, registerAllocation, updateInstanceData} from "./instance.js"
 import {getMeshByName} from "./mesh.js"
-import {INSTANCE_BLOCK_SIZE} from "./constants.js"
+import {INSTANCE_BLOCK_SIZE, UNIFORM_BUFFER_OFFSET_PROJECTION, UNIFORM_BUFFER_OFFSET_VIEW} from "./constants.js"
 import {latLonToUnitVec} from "./common.js"
+import {createBindGroup, createMainUniformBuffer} from "./pipeline.js"
+import {activateLightSource, applyLightSourceDescriptor, createLightingState, createLightSource, deactivateLightSource} from "./lighting.js"
 const { PI } = Math
 glMatrix.setMatrixArrayType(Array)
 
 const instanceDataBuffer = new ArrayBuffer(INSTANCE_BLOCK_SIZE)
 const instanceDataBufferF32 = new Float32Array(instanceDataBuffer)
+let sceneGraphCount = 0
 
 /** Create a scene. */
 export async function createScene(
@@ -30,7 +33,26 @@ export async function createScene(
 }
 
 /** Create a scene graph. */
-export function createSceneGraph(renderer: Renderer): SceneGraph {
+export function createSceneGraph(
+    renderer: Renderer,
+    lightSourceCapacity: number = 16,
+    label?: string): SceneGraph {
+
+  if(!label)
+    label = `scene-graph-${sceneGraphCount++}`
+
+  const uniformBuffer = createMainUniformBuffer(renderer.device)
+  const uniformData = new ArrayBuffer(uniformBuffer.size)
+  const lightingState = createLightingState(lightSourceCapacity, renderer.device)
+  const bindGroup = createBindGroup(
+    label,
+    renderer.bindGroupLayout,
+    uniformBuffer,
+    lightingState.buffer,
+    renderer.instanceAllocator.storageBuffer,
+    renderer.atlas,
+    renderer.mainSampler,
+    renderer.device)
   const rootNode: TransformNode = {
     nodeType:  'transform',
     name:      'root',
@@ -49,6 +71,12 @@ export function createSceneGraph(renderer: Renderer): SceneGraph {
     models:         {},
     nextDrawCallId: 0,
     views:          {},
+    uniformBuffer:  uniformBuffer,
+    uniformData:    uniformData,
+    uniformFloats:  new Float32Array(uniformData),
+    uniformView:    new DataView(uniformData),
+    bindGroup:      bindGroup,
+    lightingState:  lightingState,
   }
 }
 
@@ -97,7 +125,7 @@ export function createNodeFromDescriptor(
   } else if(descriptor.type == 'transform') {
     node = createTransformNode(sceneGraph)
   } else if(descriptor.type == 'light') {
-    throw 'not implemented'
+    node = createLightSourceNode(descriptor, sceneGraph)
   }
   node.name = descriptor.name
   if(descriptor.transform)
@@ -137,18 +165,27 @@ export function setNodeVisibility(visible: boolean, node: Node, sceneGraph: Scen
 /** Deactivate a node and all its visible descendants for drawing.
  *  
  * This is used by `attachNode`, `detachNode` and `setNodeVisibility` to update
- * draw calls when the effective visibility of a node changes. It should not be
- * used elsewhere, as this will lead to inconsistent state the next time that
- * one of these functions is called.
+ * draw calls and the lighting buffer when the effective visibility of a node
+ * changes. It should not be used elsewhere, as this will lead to inconsistent
+ * state the next time that one of these functions is called.
  */
 function deactivateNode(node: Node, sceneGraph: SceneGraph): void {
   if(!node.visible) return
-  if(node.nodeType === 'model') {
+
+  switch(node.nodeType) {
+  case 'model':
     const { instanceAllocator, device } = sceneGraph.renderer
     const drawCall = sceneGraph.drawCalls[node.drawCallId]
     deactivateInstance(node.instanceId, instanceAllocator, device)
     drawCall.instanceCount--
+    break
+  case 'light':
+    deactivateLightSource(node.lightSource.id, sceneGraph.lightingState)
+    break
+  default:
+    break
   }
+  
   for(let child of node.children)
     deactivateNode(child, sceneGraph)
 }
@@ -156,18 +193,27 @@ function deactivateNode(node: Node, sceneGraph: SceneGraph): void {
 /** Activate a node and all its visible descendants for drawing.
  *  
  * This is used by `attachNode`, `detachNode` and `setNodeVisibility` to update
- * draw calls when the effective visibility of a node changes. It should not be
- * used elsewhere, as this will lead to inconsistent state the next time that
- * one of these functions is called.
+ * draw calls and the lighting buffer when the effective visibility of a node
+ * changes. It should not be used elsewhere, as this will lead to inconsistent
+ * state the next time that one of these functions is called.
  */
 function activateNode(node: Node, sceneGraph: SceneGraph): void {
   if(!node.visible) return
-  if(node.nodeType === 'model') {
+
+  switch(node.nodeType) {
+  case 'model':
     const { instanceAllocator, device } = sceneGraph.renderer
     const drawCall = sceneGraph.drawCalls[node.drawCallId]
     activateInstance(node.instanceId, instanceAllocator, device)
     drawCall.instanceCount++
+    break
+  case 'light': 
+    activateLightSource(node.lightSource.id, sceneGraph.lightingState)
+    break
+  default:
+    break
   }
+  
   for(let child of node.children)
     activateNode(child, sceneGraph)
 }
@@ -360,6 +406,30 @@ export function createCameraNode(viewName: string | null, sceneGraph: SceneGraph
   return node
 }
 
+/** Create a light source node. */
+export function createLightSourceNode(
+    descriptor: LightSourceNodeDescriptor,
+    sceneGraph: SceneGraph): Node {
+
+  const lightSource = createLightSource(sceneGraph.lightingState, {
+    ...descriptor,
+    type: descriptor.lightType,
+  })
+
+  const node: LightSourceNode = {
+    nodeType:    'light',
+    parent:      null,
+    root:        null,
+    transform:   mat4.create() as Mat4,
+    children:    [],
+    lightSource: lightSource,
+    visible:     true,
+  }
+
+  sceneGraph.nodes.push(node)
+  return node
+}
+
 /** Create a transform node. */
 export function createTransformNode(sceneGraph: SceneGraph): Node {
   const node: TransformNode = {
@@ -382,7 +452,7 @@ export function registerSceneGraphModel(
     maxInstances: number,
     sceneGraph:   SceneGraph): void {
 
-  const { instanceAllocator, meshStore, mainBindGroup } = sceneGraph.renderer
+  const { instanceAllocator, meshStore } = sceneGraph.renderer
   const allocationId = registerAllocation(maxInstances, instanceAllocator)
   const allocation = instanceAllocator.allocations[allocationId]
   const mesh = getMeshByName(meshName, meshStore)
@@ -405,7 +475,7 @@ export function registerSceneGraphModel(
     instanceBuffer:  instanceAllocator.instanceBuffer,
     instancePointer: allocation.instanceIndex * 4,
     instanceCount:   0,
-    bindGroup:       mainBindGroup,
+    bindGroup:       sceneGraph.bindGroup,
     pipeline:        pipeline,
     indexPointer:    mesh.indexPointer,
     indexBuffer:     meshStore.indexBuffer,
@@ -514,12 +584,17 @@ export function getChildNodeByName(name: string, node: Node): Node | null {
   return null
 }
 
-/** Update the modelView matrices of all the model nodes in the scene graph. */
+/** Update GPU buffer matrices of all the visible nodes in the scene graph. */
 export function updateModelViews(view: View, sceneGraph: SceneGraph): void {
   const viewMatrix = getViewMatrix(view)
+  sceneGraph.uniformFloats.set(viewMatrix, UNIFORM_BUFFER_OFFSET_VIEW / 4)
+  sceneGraph.uniformFloats.set(view.projection, UNIFORM_BUFFER_OFFSET_PROJECTION / 4)
   view.viewMatrix = viewMatrix
   updateModelViews_(sceneGraph.root, mat4.create() as Mat4, viewMatrix, sceneGraph)
+  sceneGraph.renderer.device.queue.writeBuffer(sceneGraph.uniformBuffer, 0, sceneGraph.uniformData)
 }
+
+let updateModelViews_tempMat4: Mat4 = mat4.create() as Mat4
 
 /** Internal recursive helper function for updateModelViews. */
 function updateModelViews_(
@@ -527,22 +602,51 @@ function updateModelViews_(
     currentTransform: Mat4, 
     viewMatrix: Mat4,
     sceneGraph: SceneGraph): void {
+
+  if(!node.visible)
+    return
+
   mat4.multiply(currentTransform, currentTransform, node.transform)
-  if(node.nodeType === 'model') {
-    let modelViewMatrix = mat4.create() as Mat4
-    mat4.multiply(modelViewMatrix, viewMatrix, currentTransform)
-    if(modelViewMatrix.some(x => x > 1000000)) {
+  
+  switch(node.nodeType) {
+  case 'model':
+    mat4.multiply(updateModelViews_tempMat4, viewMatrix, currentTransform)
+    if(updateModelViews_tempMat4.some(x => x > 1000000)) {
       //console.warn(`WARNING: large numbers detected in modelview matrix. reprojecting...`)
-      modelViewMatrix = checkProjection(modelViewMatrix, sceneGraph.views.default.projection)
-      
+      updateModelViews_tempMat4 = checkProjection(updateModelViews_tempMat4, sceneGraph.views.default.projection)
     }
-    instanceDataBufferF32.set(modelViewMatrix)
+    instanceDataBufferF32.set(updateModelViews_tempMat4)
     const { instanceAllocator, device } = sceneGraph.renderer
     updateInstanceData(instanceDataBuffer, node.instanceId, instanceAllocator, device)
+    break
+  case 'light':
+    if(node.lightSource.slot === null)
+      break // do nothing if the light somehow isn't active
+
+    mat4.multiply(updateModelViews_tempMat4, viewMatrix, currentTransform)
+    // Basically, we assume that a light starts off at the origin pointing down
+    // the negative z axis, and we use the scene graph transforms to position
+    // and orient it, as if it were a model. The lighting manager needs to know
+    // the position and direction as vectors, however, so we extract them here.
+    const position: Vec4 = [
+      updateModelViews_tempMat4[12],
+      updateModelViews_tempMat4[13],
+      updateModelViews_tempMat4[14],
+      1,
+    ]
+    const direction: Vec4 = [
+      -updateModelViews_tempMat4[8],
+      -updateModelViews_tempMat4[9],
+      -updateModelViews_tempMat4[10],
+      0,
+    ]
+    applyLightSourceDescriptor({position, direction}, node.lightSource)
+
+    break
   }
-  for(const child of node.children) {
+
+  for(const child of node.children)
     updateModelViews_(child, mat4.clone(currentTransform) as Mat4, viewMatrix, sceneGraph)
-  }
 }
 
 /** Calculate the model matrix for a node. */

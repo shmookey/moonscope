@@ -31,16 +31,20 @@ Uniforms struct
 
   mat4x4<f32>             view           View matrix
   mat4x4<f32>             projection     Projection matrix
-  array<LightSource, 16>  lightSources   Light source array
   f32                     time           Time in milliseconds
 
   Size: 1152 bytes
 
 LightSource struct
 
-  vec4<f32>  position     Light position
-  vec4<f32>  colour       Light colour
-  vec4<f32>  attenuation  Light attenuation
-  vec4<f32>  direction    Light direction (xyz + spread angle)
+  BYTE  TYPE       NAME         DESCRIPTION
+     0  uint32     type         Type
+     4  vec4<f32>  position     Position, view space (xyzw)
+    20  vec4<f32>  direction    Direction, view space (xyzw)
+    36  vec4<f32>  attenuation  Attenuation (constant, linear, quadratic, spare)
+    52  vec4<f32>  ambient      Ambient colour (rgb + spare)
+    68  vec4<f32>  diffuse      Diffuse colour (rgb + spare)
+    84  vec4<f32>  specular     Specular colour (rgb + spare)
+   100  vec2<f32>  cone         Cone angle (inner, outer)
 
-  Size: 64 bytes
+  Size: 108 bytes

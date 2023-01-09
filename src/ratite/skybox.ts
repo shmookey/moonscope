@@ -48,7 +48,7 @@ const VERTICES = [
 const TEXTURE_FORMAT = 'rgba8unorm'
 
 
-export async function createSkybox(uniformBuffer: GPUBuffer, gpu: GPUContext): Promise<SkyboxState> {
+export async function createSkybox(uniformBuffer: GPUBuffer, gpu: GPUContext, msaaCount: number = 1): Promise<SkyboxState> {
   const vertexData = new Float32Array(VERTICES)
   
   const vertexBuffer = gpu.device.createBuffer({
@@ -124,7 +124,7 @@ export async function createSkybox(uniformBuffer: GPUBuffer, gpu: GPUContext): P
       format: 'depth24plus',
     },
     multisample: {
-      count: 4,
+      count: msaaCount,
     },
   })
   const sampler = gpu.device.createSampler({

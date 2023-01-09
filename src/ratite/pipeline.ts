@@ -8,28 +8,33 @@ import {UNIFORM_BUFFER_FLOATS, UNIFORM_BUFFER_SIZE, VERTEX_SIZE} from "./constan
 const bindGroupLayoutDescriptor: GPUBindGroupLayoutDescriptor = {
   label: 'main-bind-group-layout',
   entries: [{
-    // Uniform buffer
+    // General uniforms
     binding: 0, 
     visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
     buffer: { type: 'uniform' },
-  }, { 
-    // Instance uniforms
+  }, {
+    // Lighting uniforms
     binding: 1, 
     visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-    buffer: { type: 'read-only-storage' },
-  }, {
-    // Atlas metadata
+    buffer: { type: 'uniform' },
+  }, { 
+    // Instance data
     binding: 2, 
     visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
     buffer: { type: 'read-only-storage' },
   }, {
-    // Sampler
+    // Atlas metadata
     binding: 3, 
+    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+    buffer: { type: 'read-only-storage' },
+  }, {
+    // Sampler
+    binding: 4, 
     visibility: GPUShaderStage.FRAGMENT,
     sampler: { type: 'filtering' },
   }, {
     // Atlas texture    
-    binding: 4,
+    binding: 5,
     visibility: GPUShaderStage.FRAGMENT,
     texture: { 
       sampleType: 'float', 
@@ -75,28 +80,32 @@ export function createMainBindGroupLayout(device: GPUDevice): GPUBindGroupLayout
   return device.createBindGroupLayout(bindGroupLayoutDescriptor)
 }
 
-export function createMainBindGroup( 
+export function createBindGroup( 
+  label: string,
   layout: GPUBindGroupLayout,
   uniformBuffer: GPUBuffer,
+  lightingBuffer: GPUBuffer,
   storageBuffer: GPUBuffer,
   atlas: Atlas,
   sampler: GPUSampler,
   device: GPUDevice): GPUBindGroup {
+
   const textureView = atlas.texture.createView({
-    label: 'main-texture-view',
-    format: atlas.format,
-    dimension: '2d-array',
+    label:           `${label}::texture-view`,
+    format:          atlas.format,
+    dimension:       '2d-array',
     arrayLayerCount: atlas.layerCount,
   })
+  
   const bindGroup = device.createBindGroup({
-    label: 'main-bind-group',
-    layout,
+    label, layout,
     entries: [
       { binding: 0, resource: { buffer: uniformBuffer } },
-      { binding: 1, resource: { buffer: storageBuffer } }, 
-      { binding: 2, resource: { buffer: atlas.metadataBuffer } },
-      { binding: 3, resource: sampler }, 
-      { binding: 4, resource: textureView},
+      { binding: 1, resource: { buffer: lightingBuffer } },
+      { binding: 2, resource: { buffer: storageBuffer } }, 
+      { binding: 3, resource: { buffer: atlas.metadataBuffer } },
+      { binding: 4, resource: sampler }, 
+      { binding: 5, resource: textureView },
     ]
   })
   return bindGroup
@@ -130,7 +139,8 @@ export function createPipeline(
   layout:             GPUPipelineLayout,
   presentationFormat: GPUTextureFormat,
   device:             GPUDevice,
-  enableDepthBuffer:  boolean = true): GPURenderPipeline {
+  enableDepthBuffer:  boolean = true,
+  sampleCount:        number = 1): GPURenderPipeline {
 
   const pipeline = device.createRenderPipeline({
     label: name,
@@ -180,7 +190,7 @@ export function createPipeline(
       format: 'depth24plus',
     },
     multisample: {
-      count: 4,
+      count: sampleCount,
     },
   })
   return pipeline
