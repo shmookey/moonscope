@@ -55,13 +55,16 @@
             "children": [
               { "type": "model", "modelName": "sphere", "transform": {"type": "trs", "translation": [0, 1, 0]} }
             ]},
+          { "name": "telescope", "type": "transform" },
           { "name": "antenna", "type": "transform", 
-            "transform": {"type":"trs", "translation": [5, 0.6125, -5], "scale": [0.05, 0.05, 0.05]},
             "children": [
-              { "name": "antenna-mount", "type": "model", "modelName": "antenna-mount" },
-              { "name": "antenna-boom", "type": "model", "modelName": "antenna-boom",
+              { "type": "transform", "transform": {"type": "trs", "translation": [0, 0.6125, 0], "scale": [0.05, 0.05, 0.05]},
                 "children": [
-                  { "name": "antenna-dish", "type": "model", "modelName": "antenna-dish" }
+                  { "name": "antenna-mount", "type": "model", "modelName": "antenna-mount" },
+                  { "name": "antenna-boom", "type": "model", "modelName": "antenna-boom",
+                    "children": [
+                      { "name": "antenna-dish", "type": "model", "modelName": "antenna-dish" }
+                    ]}
                 ]}
             ]
           },

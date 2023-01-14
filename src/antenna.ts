@@ -2,7 +2,7 @@
 
 import type {ModelNode, Node, SceneGraph, Vec2, Vec3} from './ratite/types'
 import {mat4} from 'gl-matrix'
-import { cloneNode, getChildNodeByName } from './ratite/scene.js'
+import { cloneNode, getChildNodeByName, setTranslation } from './ratite/scene.js'
 const { min, max, PI } = Math
 
 export type Antenna = {
@@ -24,9 +24,9 @@ export function initAntenna(node: Node, scene: SceneGraph): Antenna {
   return {
     id:       _antennaCount++,
     group:    node,
-    dish:     getChildNodeByName('dish', node)  as ModelNode,
-    boom:     getChildNodeByName('boom', node)  as ModelNode,
-    mount:    getChildNodeByName('mount', node) as ModelNode, 
+    dish:     getChildNodeByName('antenna-dish', node)  as ModelNode,
+    boom:     getChildNodeByName('antenna-boom', node)  as ModelNode,
+    mount:    getChildNodeByName('antenna-mount', node) as ModelNode, 
     altaz:    [0, 0],
     position: [0, 0, 0],
     scene:    scene
@@ -42,9 +42,9 @@ export function cloneAntenna(antenna: Antenna): Antenna {
   return {
     id:       _antennaCount++,
     group:    group, 
-    dish:     getChildNodeByName('dish', group)  as ModelNode,
-    boom:     getChildNodeByName('boom', group)  as ModelNode,
-    mount:    getChildNodeByName('mount', group) as ModelNode, 
+    dish:     getChildNodeByName('antenna-dish', group)  as ModelNode,
+    boom:     getChildNodeByName('antenna-boom', group)  as ModelNode,
+    mount:    getChildNodeByName('antenna-mount', group) as ModelNode, 
     altaz:    [antenna.altaz[0], antenna.altaz[1]],
     position: [antenna.position[0], antenna.position[1], antenna.position[2]],
     scene:    antenna.scene
@@ -77,6 +77,6 @@ export function setPointingDirection(altaz: Vec2, antenna: Antenna): void {
 
 /** Set the position of an antenna. */
 export function setAntennaPosition(position: Vec3, antenna: Antenna): void {
-  mat4.translate(antenna.group.transform, antenna.group.transform, position)
+  setTranslation(position, antenna.group)
   antenna.position = position
 }
