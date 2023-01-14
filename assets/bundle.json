@@ -49,12 +49,6 @@
             "children": [
               { "name": "camera-fps", "type": "camera", "view": "default" }]},
           { "name": "floor", "type": "model", "modelName": "floor:sand" },
-          { "name": "nearball", "type": "model", "modelName": "sphere", "visible":false,
-            "transform": {"type": "trs", "translation": [0, 0, 0]} },
-          { "type": "transform", "transform": {"type": "globe", "radius": 1, "coords": [45, 30]}, "visible": false,
-            "children": [
-              { "type": "model", "modelName": "sphere", "transform": {"type": "trs", "translation": [0, 1, 0]} }
-            ]},
           { "name": "telescope", "type": "transform" },
           { "name": "antenna", "type": "transform", 
             "children": [
@@ -68,41 +62,17 @@
                 ]}
             ]
           },
-          { "name": "antenna-2", "type": "transform", 
-            "transform": {"type":"trs", "translation": [5, 0.6125, 5], "scale": [0.05, 0.05, 0.05]},
-            "children": [
-              { "name": "antenna-mount", "type": "model", "modelName": "antenna-mount" },
-              { "name": "antenna-boom", "type": "model", "modelName": "antenna-boom",
-                "children": [
-                  { "name": "antenna-dish", "type": "model", "modelName": "antenna-dish" }
-                ]}
-            ]
-          },
-          { "name": "antenna-3", "type": "transform", 
-            "transform": {"type":"trs", "translation": [-5, 0.6125, -5], "scale": [0.05, 0.05, 0.05]},
-            "children": [
-              { "name": "antenna-mount", "type": "model", "modelName": "antenna-mount" },
-              { "name": "antenna-boom", "type": "model", "modelName": "antenna-boom",
-                "children": [
-                  { "name": "antenna-dish", "type": "model", "modelName": "antenna-dish" }
-                ]}
-            ]
-          },
-          { "name": "antenna-4", "type": "transform", 
-            "transform": {"type":"trs", "translation": [-5, 0.6125, 5], "scale": [0.05, 0.05, 0.05]},
-            "children": [
-              { "name": "antenna-mount", "type": "model", "modelName": "antenna-mount" },
-              { "name": "antenna-boom", "type": "model", "modelName": "antenna-boom",
-                "children": [
-                  { "name": "antenna-dish", "type": "model", "modelName": "antenna-dish" }
-                ]}
-            ]
-        },
           { "name": "point-light-1", "type": "transform",
-            "transform": {"type": "trs", "translation": [0, 5, 0] },
+            "transform": {"type": "trs", "translation": [2, 1, -4] },
             "children": [
               { "type": "model", "modelName": "point-light", "transform": {"type": "trs", "scale": [0.1, 0.1, 0.1]} },
-              { "type": "light", "light": {"type": "point", "attenuation": [1, 0.09, 0.032, 0], "ambient": [1, 1, 1, 1], "diffuse": [1, 1, 1, 1], "specular": [1, 1, 1, 1]} }
+              { "type": "light", "lightType": "point", "attenuation": [1, 0.027, 0.0028, 0], "ambient": [1, 1, 1, 1], "diffuse": [1, 1, 1, 1], "specular": [1, 1, 1, 1] }
+            ]},
+            { "name": "point-light-2", "type": "transform",
+            "transform": {"type": "trs", "translation": [17, 1, -17] },
+            "children": [
+              { "type": "model", "modelName": "point-light", "transform": {"type": "trs", "scale": [0.1, 0.1, 0.1]} },
+              { "type": "light", "lightType": "point", "attenuation": [1, 0.027, 0.0028, 0], "ambient": [1, 1, 1, 1], "diffuse": [1, 1, 1, 1], "specular": [1, 1, 1, 1] }
             ]}
         ]
       },

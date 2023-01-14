@@ -146,13 +146,13 @@ export function updateLightingBuffer(state: LightingState): void {
   for(let slot=0; slot < state.bufferUsage; slot++) {
     const source = state.slots[slot]
     const offset = slot * LIGHT_RECORD_SIZE
-    array.set(source.position,    offset + LIGHT_RECORD_OFFSET_POSITION    / 4)
-    array.set(source.direction,   offset + LIGHT_RECORD_OFFSET_DIRECTION   / 4)
-    array.set(source.attenuation, offset + LIGHT_RECORD_OFFSET_ATTENUATION / 4)
-    array.set(source.ambient,     offset + LIGHT_RECORD_OFFSET_AMBIENT     / 4)
-    array.set(source.diffuse,     offset + LIGHT_RECORD_OFFSET_DIFFUSE     / 4)
-    array.set(source.specular,    offset + LIGHT_RECORD_OFFSET_SPECULAR    / 4)
-    array.set(source.cone,        offset + LIGHT_RECORD_OFFSET_CONE        / 4)
+    array.set(source.position,    (offset + LIGHT_RECORD_OFFSET_POSITION   ) / 4)
+    array.set(source.direction,   (offset + LIGHT_RECORD_OFFSET_DIRECTION  ) / 4)
+    array.set(source.attenuation, (offset + LIGHT_RECORD_OFFSET_ATTENUATION) / 4)
+    array.set(source.ambient,     (offset + LIGHT_RECORD_OFFSET_AMBIENT    ) / 4)
+    array.set(source.diffuse,     (offset + LIGHT_RECORD_OFFSET_DIFFUSE    ) / 4)
+    array.set(source.specular,    (offset + LIGHT_RECORD_OFFSET_SPECULAR   ) / 4)
+    array.set(source.cone,        (offset + LIGHT_RECORD_OFFSET_CONE       ) / 4)
     state.bufferView.setUint32(offset + LIGHT_RECORD_OFFSET_TYPE + LIGHT_BUFFER_OFFSET_RECORDS, LIGHT_SOURCE_TYPE[source.type], true)
   }
   state.device.queue.writeBuffer(state.buffer, 0, state.bufferData)

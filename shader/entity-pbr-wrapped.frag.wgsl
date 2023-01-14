@@ -49,10 +49,12 @@ struct AtlasData {
 
 //const lightPos    = vec3<f32>(  3.0,  10.0, -3.0);
 const viewDirection = vec3<f32>(  0.0,  0.0,  1.0);
-const lightColour = vec3<f32>(  1.0,  1.0, 1.0);
+
 
 fn attenuate(distance: f32, attenuation: vec4<f32>) -> f32 {
-  return 1.0 / (attenuation.x + (attenuation.y * distance) + (attenuation.z * distance * distance));
+  return 1.0 / (attenuation.x + 
+               (attenuation.y * distance) + 
+               (attenuation.z * distance * distance));
 }
 
 fn getDiffuse(light: Light, direction: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
@@ -78,13 +80,13 @@ fn getLighting(position: vec3<f32>, normal: vec3<f32>, tangent: vec3<f32>, bitan
     let light = lighting.data[i];
     let direction = normalize(light.position.xyz - position);
     let distance = distance(light.position.xyz, position);
+    let level = attenuate(distance, light.attenuation);
+    if(level < 0.01) {
+      continue;
+    }
     if (light.type_ == 0) {
-      let level = attenuate(distance, light.attenuation);
-      let diffuseComponent = getDiffuse(light, direction, mappedNormal);
-      var specularComponent = vec3(0.0);
-      if(level > 0.75) {
-        specularComponent = getSpecular(light, direction, mappedNormal, texelSpecular);
-      }
+      let diffuseComponent  = getDiffuse(light, direction, mappedNormal);
+      let specularComponent = getSpecular(light, direction, mappedNormal, texelSpecular);
       lightValue += (diffuseComponent + specularComponent) * level;
     }
   }
@@ -113,7 +115,7 @@ fn main(
 
   let texelColour   = textureSampleGrad(atlas, mySampler, uvColourWrapped, i32(uvColour.z), dpdx(uvColour.xy), dpdy(uvColour.xy));
   let texelNormal   = 2 * textureSampleGrad(atlas, mySampler, uvNormalWrapped, i32(uvNormal.z), dpdx(uvNormal.xy), dpdy(uvNormal.xy)).rgb - 1;
-  let texelSpecular = textureSampleGrad(atlas,  mySampler, uvSpecularWrapped, i32(uvSpecular.z), dpdx(uvSpecular.xy), dpdy(uvSpecular.xy)).r;
+  let texelSpecular = textureSampleGrad(atlas,  mySampler, uvSpecularWrapped, i32(uvSpecular.z), dpdx(uvSpecular.xy), dpdy(uvSpecular.xy)).r / 4;
 
   let light = getLighting(position, normal, tangent, bitangent, texelNormal, texelSpecular);
   return vec4(texelColour.rgb * light, texelColour.a); 
