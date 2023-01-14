@@ -24,6 +24,10 @@
     "@petamoriken/float16": "^3.6.6",
     "@webgpu/types": "^0.1.23",
     "gl-matrix": "^3.4.3",
-    "typescript": "^4.9.3"
+    "typescript": "^4.9.3",
+    "webpack": "^5.75.0"
+  },
+  "devDependencies": {
+    "webpack-cli": "^5.0.1"
   }
 }

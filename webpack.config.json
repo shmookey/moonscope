@@ -1,0 +1,4 @@
+{
+  "entry": "./build/src/app.js",
+  "mode": "development"
+}

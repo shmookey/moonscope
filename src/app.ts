@@ -5,13 +5,15 @@ import * as Render from './ratite/render.js'
 import { createInputState } from './input.js'
 import { getLayerAsImageBitmap } from './ratite/atlas.js'
 import {vec3, mat4, quat} from 'gl-matrix'
-import type {Mat4, Renderer, SceneGraph, ViewDescriptor, Quat, ModelNode, MatrixDescriptor} from './ratite/types.js'
+import type {Mat4, Renderer, SceneGraph, ViewDescriptor, Quat, ModelNode, MatrixDescriptor, GPUContext, Renderable, ResourceBundleDescriptor} from './ratite/types.js'
 import {applyFirstPersonCamera, getCameraViewMatrix, moveFirstPersonCameraForward, moveFirstPersonCameraRight, moveFirstPersonCameraUp, moveFirstPersonCameraUpScale, rotateFirstPersonCamera} from './ratite/camera.js'
 import {celestialBodyModelMatrix, generateUniverse, Universe} from './universe.js'
 import {getMeshByName} from './ratite/mesh.js'
 import {attachNode, createCameraNode, createModelNode, createScene, createSceneGraph, createSceneView, createTransformNode, getNodeByName, registerSceneGraphModel, setTransform} from './ratite/scene.js'
-import {loadResourceBundle} from './ratite/resource.js'
-import {AntennaObject, setAntennaAltitude, setAntennaAzimuth} from './antenna.js'
+import {loadResourceBundleFromDescriptor} from './ratite/resource.js'
+import {Antenna, setAntennaAltitude, setAntennaAzimuth} from './antenna.js'
+import Bundle from '../assets/bundle.json'
+import { createTelescope, defaultTelescopeDescriptor } from './telescope.js'
 const { sin, cos, log, sqrt, min, max, random, PI } = Math
 
 const MOUSE_SENSITIVITY = 0.001
@@ -88,14 +90,7 @@ function updateWorldState(dT: number, sceneGraph: SceneGraph): boolean {
   return true
 }
 
-async function main(): Promise<void> {
-  const elems = {
-    canvas: initCanvas(),
-    layerCount: document.querySelector('#layer-count') as HTMLSpanElement,
-  }
-  const gpu = await GPU.initGPU(elems.canvas)
-  
-  //const testShader = await GPU.loadShader('/shader/entity.frag.wgsl', gpu)
+async function initSkyVis(gpu: GPUContext): Promise<SkyModelState> {
   const visSource = layerGen()
   const visState = await Sky.create(
     1024, // window.visualViewport?.width ?? 1,
@@ -107,43 +102,63 @@ async function main(): Promise<void> {
   )
   const skyEntity = await Sky.createSkyRenderer(visState.texture, gpu)
   gpu.entities.push(skyEntity)
+  return { visSource, visState, skyEntity }
+}
 
-  const inputState = createInputState()
-  
+type SkyModelState = {
+  visSource: Iterator<Sky.LayerData, any, undefined>,
+  visState: Sky.VisGenState,
+  skyEntity: Renderable,
+}
+
+async function main(): Promise<void> {
+  const elems = {
+    canvas: initCanvas(),
+    layerCount: document.querySelector('#layer-count') as HTMLSpanElement,
+  }
+  const gpu = await GPU.initGPU(elems.canvas)
   const renderer = await Render.createRenderer(
     gpu.presentationFormat, 
     gpu,
     5000,  // instance storage capacity
     40000, // vertex storage capacity
   )
-  const bundle = await loadResourceBundle('/assets/bundle.json', renderer)
+  const bundle = await loadResourceBundleFromDescriptor(Bundle as unknown as ResourceBundleDescriptor, renderer)
+
+  let skyModel: SkyModelState = null;
+  (async () => {
+    skyModel = await initSkyVis(gpu)
+  })()
+  const inputState = createInputState()
  
   app.renderer = renderer
 
   const sceneState = await createScene(renderer.mainUniformBuffer, gpu)
   const sceneGraph = bundle.scenes[0] //setupSceneGraph(renderer)
   const mainCamera = sceneGraph.views.default.camera
-  const antennaNode = getNodeByName('antenna', sceneGraph)
-  const antennaObject: AntennaObject = {
-    mount: antennaNode.children[0] as ModelNode,
-    boom:  antennaNode.children[1] as ModelNode,
-    dish:  antennaNode.children[1].children[0] as ModelNode,
-    altitude: 35 * PI/180,
-    azimuth: 0,
-  }
-  app.antenna = antennaObject
+  const telescopeNode = getNodeByName('telescope', sceneGraph)
+  const telescope = createTelescope(telescopeNode, defaultTelescopeDescriptor, sceneGraph)
+  //const antennaNode = getNodeByName('antenna', sceneGraph)
+  //const antennaObject: AntennaObject = {
+  //  mount: antennaNode.children[0] as ModelNode,
+  //  boom:  antennaNode.children[1] as ModelNode,
+  //  dish:  antennaNode.children[1].children[0] as ModelNode,
+  //  altitude: 35 * PI/180,
+  //  azimuth: 0,
+  //}
+  //app.antenna = antennaObject
 
   sceneState.firstPersonCamera.position[1] = CAMERA_HEIGHT
   app.sceneGraph = sceneGraph
   
-
+  const layerCountTextNode: Text = elems.layerCount.childNodes[0] as Text
   function addVisibilities(count: number) {
     if(count > 0) {
-      Sky.applyLayers(count, visState, gpu)
-      Sky.updateSkyUniforms(visState.layers, skyEntity, gpu)
-      Sky.renderSkyToTexture(skyEntity, gpu)
-      Skybox.writeSkyboxTextures(skyEntity.outputTexture, sceneState.skybox, gpu)
-      elems.layerCount.innerHTML = visState.layers.toString()
+      Sky.applyLayers(count, skyModel.visState, gpu)
+      Sky.updateSkyUniforms(skyModel.visState.layers, skyModel.skyEntity, gpu)
+      Sky.renderSkyToTexture(skyModel.skyEntity, gpu)
+      Skybox.writeSkyboxTextures(skyModel.skyEntity.outputTexture, sceneState.skybox, gpu)
+      layerCountTextNode.data = skyModel.visState.layers.toString()
     }
     //GPU.frame(gpu)
     Render.renderFrame(sceneState, sceneGraph, renderer, gpu)
@@ -153,7 +168,7 @@ async function main(): Promise<void> {
     //console.log(ev.code)
     switch(ev.code) {
       case 'KeyI':
-        Sky.getPixels(visState, gpu)
+        Sky.getPixels(skyModel.visState, gpu)
         break
       case 'Space':
         addVisibilities(1)
@@ -173,7 +188,7 @@ async function main(): Promise<void> {
         getAtlasAsImage()
         break
       case 'KeyZ':
-        setAntennaAltitude(PI/2, antennaObject)
+        //setAntennaAltitude(PI/2, antennaObject)
         break
       default:
         //console.log(ev.code)
@@ -219,10 +234,10 @@ async function main(): Promise<void> {
   app.GPU = GPU
   app.gpu = gpu
   app.scene = sceneState
-  app.visState = visState
+  app.visState = skyModel
   app.glm = { mat4, vec3, quat }
   
-  
+  let frame: number = 0
   function renderFrame(currentTime: number): void {
     if(inputState.mouseCaptured) {
       const dt = currentTime - lastTime
@@ -247,22 +262,22 @@ async function main(): Promise<void> {
       if( inputState.keyDown['ArrowUp']) {
         //moveFirstPersonCameraForward(-movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
         //cameraMoved = true
-        setAntennaAltitude(antennaObject.altitude + 0.001 * dt, antennaObject)
-        requireRepaint = true
+        //setAntennaAltitude(antennaObject.altitude + 0.001 * dt, antennaObject)
+        //requireRepaint = true
       } else if( inputState.keyDown['ArrowDown']) {
         //moveFirstPersonCameraForward(movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
         //cameraMoved = true
-        setAntennaAltitude(antennaObject.altitude - 0.001 * dt, antennaObject)
-        requireRepaint = true
+        //setAntennaAltitude(antennaObject.altitude - 0.001 * dt, antennaObject)
+        //requireRepaint = true
       }
       if( inputState.keyDown['ArrowLeft']) {
-        setAntennaAzimuth(antennaObject.azimuth - 0.001 * dt, antennaObject)
-        requireRepaint = true
+        //setAntennaAzimuth(antennaObject.azimuth - 0.001 * dt, antennaObject)
+        //requireRepaint = true
         //moveFirstPersonCameraRight(-movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
         //cameraMoved = true
       } else if( inputState.keyDown['ArrowRight']) {
-        setAntennaAzimuth(antennaObject.azimuth + 0.001 * dt, antennaObject)
-        requireRepaint = true
+        //setAntennaAzimuth(antennaObject.azimuth + 0.001 * dt, antennaObject)
+        //requireRepaint = true
         //moveFirstPersonCameraRight(movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
         //cameraMoved = true
       }
@@ -293,6 +308,7 @@ async function main(): Promise<void> {
         Render.renderFrame(sceneState, sceneGraph, renderer, gpu)
       }
       requestAnimationFrame(renderFrame)
+      frame++
     }
     
   }
@@ -308,6 +324,7 @@ async function main(): Promise<void> {
   }
   aTerribleWayOfUpdatingTheCamera_ReallyBad()
   Render.renderFrame(sceneState, sceneGraph, renderer, gpu)
+  performance.mark('rendered first frame')
   requestAnimationFrame(renderFrame)
 }
 

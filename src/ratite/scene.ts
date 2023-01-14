@@ -1,4 +1,4 @@
-import type {BaseNode, Camera, CameraNode, DrawCallDescriptor, FirstPersonCamera, GPUContext, LightSourceDescriptor, LightSourceNode, LightSourceNodeDescriptor, Mat4, Model, ModelNode, Node, NodeDescriptor, Quat, Renderer, Scene, SceneGraph, SceneGraphDescriptor, TransformDescriptor, TransformNode, Vec2, Vec4, View, ViewDescriptor} from "./types"
+import type {BaseNode, Camera, CameraNode, DrawCallDescriptor, FirstPersonCamera, GPUContext, LightSourceDescriptor, LightSourceNode, LightSourceNodeDescriptor, Mat4, Model, ModelNode, Node, NodeDescriptor, Quat, Renderer, Scene, SceneGraph, SceneGraphDescriptor, TransformDescriptor, TransformNode, Vec2, Vec3, Vec4, View, ViewDescriptor} from "./types"
 import * as Skybox from './skybox.js'
 import {createCamera, createFirstPersonCamera, getCameraViewMatrix} from './camera.js'
 import { mat4, vec4, quat, glMatrix } from 'gl-matrix'
@@ -222,6 +222,13 @@ function activateNode(node: Node, sceneGraph: SceneGraph): void {
 /** Set the transform of a node, overwriting any previous transform. */
 export function setTransform(transform: TransformDescriptor, node: Node): void {
   computeMatrix(transform, node.transform)
+}
+
+/** Set the translation component of a node's transform matrix. */
+export function setTranslation(translation: Vec3, node: Node): void {
+  node.transform[12] = translation[0]
+  node.transform[13] = translation[1]
+  node.transform[14] = translation[2]
 }
 
 const applyTransform_tempMat4: Mat4 = mat4.create() as Mat4

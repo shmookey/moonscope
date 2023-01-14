@@ -5,7 +5,7 @@
     {"label": "default",       "id": 0, "size": [  512,  512 ], "src": "/assets/texture/default.png"},
     {"label": "sand/colour",   "id": 1, "size": [ 1024, 1024 ], "src": "/assets/texture/moon-1/colour.jpg", "wrappable": true},
     {"label": "sand/normal",   "id": 2, "size": [ 1024, 1024 ], "src": "/assets/texture/moon-1/normal.jpg", "wrappable": true},
-    {"label": "dish/colour",   "id": 3, "size": [ 2048, 2048 ], "src": "/assets/texture/dish/umbrella/colour.png"},
+    {"label": "dish/colour",   "id": 3, "size": [ 2048, 2048 ], "src": "/assets/texture/dish/dust/colour.png"},
     {"label": "dish/normal",   "id": 4, "size": [ 2048, 2048 ], "src": "/assets/texture/dish/normal.png"},
     {"label": "dish/rough",    "id": 5, "size": [ 2048, 2048 ], "src": "/assets/texture/dish/rough.png"},
     {"label": "sand/rough",    "id": 6, "size": [ 1024, 1024 ], "src": "/assets/texture/moon-1/rough.jpg", "wrappable": true}
@@ -14,7 +14,6 @@
     {"name": "ground",        "vertexCount":     6, "srcType": "json", "src": "/assets/mesh/ground.json", "prescale": 1000, "prescaleUV": 1000},
     {"name": "icosphere-1",   "vertexCount":   240, "srcType": "json", "src": "/assets/mesh/generated/icosphere-1.json"},
     {"name": "icosphere-3",   "vertexCount":  3840, "srcType": "json", "src": "/assets/mesh/generated/icosphere-3.json"},
-    {"name": "earth",         "vertexCount": 15360, "srcType": "json", "src": "/assets/mesh/generated/earth.json"},
     {"name": "antenna-mount", "vertexCount":   743, "srcType": "json", "src": "/assets/mesh/imported/0_8_ANTENA_01.json"},
     {"name": "antenna-boom",  "vertexCount":   292, "srcType": "json", "src": "/assets/mesh/imported/0_8_ANTENA_02.json"},
     {"name": "antenna-dish",  "vertexCount":   543, "srcType": "json", "src": "/assets/mesh/imported/0_8_ANTENA_03.json"}
@@ -38,7 +37,6 @@
       "models": [
         {"name": "floor:sand",    "mesh": "ground",        "pipeline": "entity-pbr-wrapped", "maxInstances":   1},
         {"name": "sphere",        "mesh": "icosphere-3",   "pipeline": "autogrid-sphere",    "maxInstances":   5},
-        {"name": "earth",         "mesh": "earth",         "pipeline": "entity-pbr-wrapped", "maxInstances":   1},
         {"name": "antenna-mount", "mesh": "antenna-mount", "pipeline": "entity-pbr-wrapped", "maxInstances": 100},
         {"name": "antenna-boom",  "mesh": "antenna-boom",  "pipeline": "entity-pbr-wrapped", "maxInstances": 100},
         {"name": "antenna-dish",  "mesh": "antenna-dish",  "pipeline": "entity-pbr-wrapped", "maxInstances": 100},

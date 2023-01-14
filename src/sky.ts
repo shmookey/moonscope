@@ -2,11 +2,11 @@ import type {GPUContext, Renderable} from './ratite/types'
 import {loadShader} from './ratite/gpu.js'
 import {
   Float16Array
-} from "../node_modules/@petamoriken/float16/browser/float16.mjs";
+} from "@petamoriken/float16";
 
 const { asin, sin, cos, log, min, max, random, PI } = Math
 
-type VisGenState = {
+export type VisGenState = {
   // Config
   width: number,
   height: number,

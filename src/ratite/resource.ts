@@ -25,21 +25,27 @@ export async function loadResourceBundleFromDescriptor(
   const presentationFormat = renderer.context.presentationFormat
 
   // Load textures
-  const textureResources = await Promise.all(textures.map(texture => loadTextureResource(texture, atlas, device)))
+  let textureResources = []
+  const texturesPromise = (async () => {
+    textureResources = await Promise.all(textures.map(texture => loadTextureResource(texture, atlas, device)))
+  })()
 
   // Load meshes
-  const meshResources = []
-  for(let mesh of meshes) {
-    const meshResource = await loadMeshResource(mesh, meshStore, device)
-    meshResources.push(meshResource)
-  }
+  let meshResources = []
+  const meshesPromise = (async () => {
+    meshResources = await Promise.all(meshes.map(mesh => loadMeshResource(mesh, meshStore, device)))
+  })()
 
   // Load shaders
-  for(let shader of descriptor.shaders) {
-    if(shader.name in shaderStore)
-      throw new Error(`Shader '${shader.name}' already exists`)
-    shaderStore[shader.name] = await loadShaderResource(shader, device)
-  }
+  const shadersPromise = (async () => {
+    await Promise.all(descriptor.shaders.map(async shader => {
+      if(shader.name in shaderStore)
+        throw new Error(`Shader '${shader.name}' already exists`)
+      shaderStore[shader.name] = await loadShaderResource(shader, device)
+    }))
+  })()
+
+  await Promise.all([texturesPromise, meshesPromise, shadersPromise])
 
   // Load pipelines
   for(let pipeline of descriptor.pipelines) {

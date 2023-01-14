@@ -1,6 +1,6 @@
 /** scene.ts - Low-level scene management and rendering. */
 
-import {mat4} from "../../node_modules/gl-matrix/esm/index.js"
+import {mat4} from "gl-matrix"
 import type {Atlas, Mat4, ShaderStore} from "./types.js"
 import {UNIFORM_BUFFER_FLOATS, UNIFORM_BUFFER_SIZE, VERTEX_SIZE} from "./constants.js"
 

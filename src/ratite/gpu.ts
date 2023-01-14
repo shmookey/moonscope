@@ -1,7 +1,9 @@
 import type {GPUContext, Renderable} from './types'
 
 export async function initGPU(canvas: HTMLCanvasElement): Promise<GPUContext> {
-  const adapter = await navigator.gpu.requestAdapter()
+  const adapter = await navigator.gpu.requestAdapter({
+    powerPreference: 'high-performance',
+  })
   if(adapter == null)
     throw 'webgpu not available'
   const device = await adapter.requestDevice({
