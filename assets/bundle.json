@@ -12,6 +12,7 @@
   ],
   "meshes": [
     {"name": "ground",        "vertexCount":     6, "srcType": "json", "src": "/assets/mesh/ground.json", "prescale": 1000, "prescaleUV": 1000},
+    {"name": "cube",          "vertexCount":     8, "srcType": "json", "src": "/assets/mesh/cube.json"},
     {"name": "icosphere-1",   "vertexCount":   240, "srcType": "json", "src": "/assets/mesh/generated/icosphere-1.json"},
     {"name": "icosphere-3",   "vertexCount":  3840, "srcType": "json", "src": "/assets/mesh/generated/icosphere-3.json"},
     {"name": "antenna-mount", "vertexCount":   743, "srcType": "json", "src": "/assets/mesh/imported/0_8_ANTENA_01.json"},
@@ -24,18 +25,21 @@
     {"name": "entity-wrap.v",     "src": "/shader/entity-pbr-wrapped.vert.wgsl"},
     {"name": "autogrid-sphere.f", "src": "/shader/autogrid-sphere.frag.wgsl"},
     {"name": "autogrid.v",        "src": "/shader/autogrid.vert.wgsl"},
-    {"name": "light-source.f",    "src": "/shader/light-source.frag.wgsl"}
+    {"name": "light-source.f",    "src": "/shader/light-source.frag.wgsl"},
+    {"name": "linear-wave.f",     "src": "/shader/linear-wave.frag.wgsl"}
   ],
   "pipelines": [
     {"name": "entity-pbr-wrapped", "vertexShader": "entity-wrap.v", "fragmentShader": "entity-wrap.f",     "depthWrite": true},
     {"name": "autogrid-sphere",    "vertexShader": "autogrid.v",    "fragmentShader": "autogrid-sphere.f", "depthWrite": true},
-    {"name": "light-source",       "vertexShader": "entity-wrap.v", "fragmentShader": "light-source.f",    "depthWrite": true}
+    {"name": "light-source",       "vertexShader": "entity-wrap.v", "fragmentShader": "light-source.f",    "depthWrite": true},
+    {"name": "linear-wave",        "vertexShader": "entity-wrap.v", "fragmentShader": "linear-wave.f",     "depthWrite": true}
   ],
   "scenes": [
     {
       "name": "default",
       "models": [
         {"name": "floor:sand",    "mesh": "ground",        "pipeline": "entity-pbr-wrapped", "maxInstances":   1},
+        {"name": "beam",          "mesh": "cube",          "pipeline": "linear-wave",        "maxInstances": 100},
         {"name": "sphere",        "mesh": "icosphere-3",   "pipeline": "autogrid-sphere",    "maxInstances":   5},
         {"name": "antenna-mount", "mesh": "antenna-mount", "pipeline": "entity-pbr-wrapped", "maxInstances": 100},
         {"name": "antenna-boom",  "mesh": "antenna-boom",  "pipeline": "entity-pbr-wrapped", "maxInstances": 100},
@@ -49,6 +53,7 @@
             "children": [
               { "name": "camera-fps", "type": "camera", "view": "default" }]},
           { "name": "floor", "type": "model", "modelName": "floor:sand" },
+          { "name": "beam", "type": "model", "modelName": "beam", "transform": {"type": "trs", "scale": [0.25, 3, 0.25], "translation": [0  , 3,  -5]} },
           { "name": "telescope", "type": "transform" },
           { "name": "antenna", "type": "transform", 
             "children": [
