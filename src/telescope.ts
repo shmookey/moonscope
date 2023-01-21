@@ -35,7 +35,7 @@ export const defaultTelescopeDescriptor: AntennaDescriptor[] = [
   { altaz: [0, 0], position: [ 18,  0,   4] },
   { altaz: [0, 0], position: [-22,  0,  -6] },
   { altaz: [0, 0], position: [  3,  0, -19] },
-  { altaz: [0, 0], position: [ -5,  0, -23] },
+  { altaz: [0, 0], position: [ -1,  0,  -5] },
 ]
 
 /** Initialse a telescope.

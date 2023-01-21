@@ -1,10 +1,5 @@
-export type InputState = {
-  mouseCaptured: boolean,            // Is the mouse captured?
-  mouseDownLeft: boolean,            // Is the left mouse button down?
-  mouseDownRight: boolean,           // Is the right mouse button down?
-  keyDown: {[key: string]: boolean}, // Is a key down?
-  mouseMovement: [number, number],   // Captured mouse movement since last frame.
-}
+import type { InputState } from "./types"
+
 
 /** Initialize the input state. */
 export function createInputState(): InputState {

@@ -117,7 +117,7 @@ export function createMainSampler(device: GPUDevice): GPUSampler {
     magFilter:     'linear',
     minFilter:     'linear',
     mipmapFilter:  'linear',
-    maxAnisotropy: 16,
+    maxAnisotropy: 1,
   })
 }
 

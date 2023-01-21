@@ -11,7 +11,7 @@
     {"label": "sand/rough",    "id": 6, "size": [ 1024, 1024 ], "src": "/assets/texture/moon-1/rough.jpg", "wrappable": true}
   ],
   "meshes": [
-    {"name": "ground",        "vertexCount":     6, "srcType": "json", "src": "/assets/mesh/ground.json", "prescale": 1000, "prescaleUV": 1000},
+    {"name": "ground",        "vertexCount":   100, "srcType": "json", "src": "/assets/mesh/generated/ground.json", "prescale": 100, "prescaleUV": 100},
     {"name": "cube",          "vertexCount":     8, "srcType": "json", "src": "/assets/mesh/cube.json"},
     {"name": "icosphere-1",   "vertexCount":   240, "srcType": "json", "src": "/assets/mesh/generated/icosphere-1.json"},
     {"name": "icosphere-3",   "vertexCount":  3840, "srcType": "json", "src": "/assets/mesh/generated/icosphere-3.json"},
@@ -23,16 +23,20 @@
   "shaders": [
     {"name": "entity-wrap.f",     "src": "/shader/entity-pbr-wrapped.frag.wgsl"},
     {"name": "entity-wrap.v",     "src": "/shader/entity-pbr-wrapped.vert.wgsl"},
+    {"name": "entity-phong.f",    "src": "/shader/entity-phong.frag.wgsl"},
+    {"name": "entity-phong.v",    "src": "/shader/entity-phong.vert.wgsl"},
+    {"name": "entity-plain.v",    "src": "/shader/entity-plain.vert.wgsl"},
     {"name": "autogrid-sphere.f", "src": "/shader/autogrid-sphere.frag.wgsl"},
     {"name": "autogrid.v",        "src": "/shader/autogrid.vert.wgsl"},
     {"name": "light-source.f",    "src": "/shader/light-source.frag.wgsl"},
     {"name": "linear-wave.f",     "src": "/shader/linear-wave.frag.wgsl"}
   ],
   "pipelines": [
-    {"name": "entity-pbr-wrapped", "vertexShader": "entity-wrap.v", "fragmentShader": "entity-wrap.f",     "depthWrite": true},
-    {"name": "autogrid-sphere",    "vertexShader": "autogrid.v",    "fragmentShader": "autogrid-sphere.f", "depthWrite": true},
-    {"name": "light-source",       "vertexShader": "entity-wrap.v", "fragmentShader": "light-source.f",    "depthWrite": true},
-    {"name": "linear-wave",        "vertexShader": "entity-wrap.v", "fragmentShader": "linear-wave.f",     "depthWrite": true}
+    {"name": "entity-pbr-wrapped", "vertexShader": "entity-wrap.v",  "fragmentShader": "entity-wrap.f",     "depthWrite": true},
+    {"name": "entity-phong",       "vertexShader": "entity-phong.v", "fragmentShader": "entity-phong.f",    "depthWrite": true},
+    {"name": "autogrid-sphere",    "vertexShader": "autogrid.v",     "fragmentShader": "autogrid-sphere.f", "depthWrite": true},
+    {"name": "light-source",       "vertexShader": "entity-plain.v", "fragmentShader": "light-source.f",    "depthWrite": true},
+    {"name": "linear-wave",        "vertexShader": "entity-plain.v", "fragmentShader": "linear-wave.f",     "depthWrite": true}
   ],
   "scenes": [
     {
@@ -41,9 +45,9 @@
         {"name": "floor:sand",    "mesh": "ground",        "pipeline": "entity-pbr-wrapped", "maxInstances":   1},
         {"name": "beam",          "mesh": "cube",          "pipeline": "linear-wave",        "maxInstances": 100},
         {"name": "sphere",        "mesh": "icosphere-3",   "pipeline": "autogrid-sphere",    "maxInstances":   5},
-        {"name": "antenna-mount", "mesh": "antenna-mount", "pipeline": "entity-pbr-wrapped", "maxInstances": 100},
-        {"name": "antenna-boom",  "mesh": "antenna-boom",  "pipeline": "entity-pbr-wrapped", "maxInstances": 100},
-        {"name": "antenna-dish",  "mesh": "antenna-dish",  "pipeline": "entity-pbr-wrapped", "maxInstances": 100},
+        {"name": "antenna-mount", "mesh": "antenna-mount", "pipeline": "entity-phong",       "maxInstances": 100},
+        {"name": "antenna-boom",  "mesh": "antenna-boom",  "pipeline": "entity-phong",       "maxInstances": 100},
+        {"name": "antenna-dish",  "mesh": "antenna-dish",  "pipeline": "entity-phong",       "maxInstances": 100},
         {"name": "point-light",   "mesh": "icosphere-1",   "pipeline": "light-source",       "maxInstances": 100}
       ],
       "root": {
@@ -53,7 +57,7 @@
             "children": [
               { "name": "camera-fps", "type": "camera", "view": "default" }]},
           { "name": "floor", "type": "model", "modelName": "floor:sand" },
-          { "name": "beam", "type": "model", "modelName": "beam", "transform": {"type": "trs", "scale": [0.25, 3, 0.25], "translation": [0  , 3,  -5]} },
+          { "name": "beam", "type": "model", "visible": false, "modelName": "beam", "transform": {"type": "trs", "scale": [0.25, 3, 0.25], "translation": [0  , 3,  -5]} },
           { "name": "telescope", "type": "transform" },
           { "name": "antenna", "type": "transform", 
             "children": [
@@ -68,16 +72,10 @@
             ]
           },
           { "name": "point-light-1", "type": "transform",
-            "transform": {"type": "trs", "translation": [2, 1, -4] },
+            "transform": {"type": "trs", "translation": [0, 4, 0] },
             "children": [
               { "type": "model", "modelName": "point-light", "transform": {"type": "trs", "scale": [0.1, 0.1, 0.1]} },
-              { "type": "light", "lightType": "point", "attenuation": [1, 0.027, 0.0028, 0], "ambient": [1, 1, 1, 1], "diffuse": [1, 1, 1, 1], "specular": [1, 1, 1, 1] }
-            ]},
-            { "name": "point-light-2", "type": "transform",
-            "transform": {"type": "trs", "translation": [17, 1, -17] },
-            "children": [
-              { "type": "model", "modelName": "point-light", "transform": {"type": "trs", "scale": [0.1, 0.1, 0.1]} },
-              { "type": "light", "lightType": "point", "attenuation": [1, 0.027, 0.0028, 0], "ambient": [1, 1, 1, 1], "diffuse": [1, 1, 1, 1], "specular": [1, 1, 1, 1] }
+              { "type": "light", "lightType": "point", "attenuation": [1, 0, 0.1, 0], "ambient": [1, 1, 1, 1], "diffuse": [1, 1, 1, 1], "specular": [1, 1, 1, 1] }
             ]}
         ]
       },

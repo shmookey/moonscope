@@ -1,6 +1,6 @@
 /** Polyhedron builder functions. */
 
-import type {MeshVertex, Vec2, Vec3, XMesh, XVertex} from "../types"
+import type {MeshVertex, Vec2, Vec3, XMesh} from "../types"
 import type { Polyhedron, Triangle } from "./types"
 import {setTextures, v3normalize, v3sub, v3add, v3mid} from "./mesh.js"
 import {Float32x2, Float32x3, Snorm16x4, Vertex} from "../vertex.js"

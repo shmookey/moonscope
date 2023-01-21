@@ -1,6 +1,6 @@
 import type {ResourceBundleDescriptor, TextureResourceDescriptor, MeshResourceDescriptor, Atlas, 
-  ResourceBundle, TextureResource, MeshResource, Vertex, XVertex, MeshStore, TextureRemapping, PipelineStore, ShaderStore, ShaderResourceDescriptor, PipelineDescriptor, MeshVertex, Renderer} from "./types"
-import { addSubTexture, copyImageToSubTexture } from "./atlas.js"
+  ResourceBundle, TextureResource, MeshResource, Vertex, MeshStore, TextureRemapping, PipelineStore, ShaderStore, ShaderResourceDescriptor, PipelineDescriptor, MeshVertex, Renderer} from "./types"
+import { addSubTexture, copyImageBitmapToSubTexture2, copyImageToSubTexture } from "./atlas.js"
 import {addMesh, getMeshById, serialiseVertices} from "./mesh.js"
 import {createPipeline} from "./pipeline.js"
 import {createSceneGraphFromDescriptor} from "./scene.js"
@@ -154,8 +154,8 @@ export async function loadTextureResource(
     //  const image = await loadImageBitmap(descriptor.src)
     //  copyImageBitmapToSubTexture(device, atlas, subTexture.id, image, [0, 0])
     //} else {
-      const image = await loadImage(descriptor.src)
-      await copyImageToSubTexture(image, subTexture.id, atlas, device)
+      const image = await loadImageBitmap(descriptor.src)
+      await copyImageBitmapToSubTexture2(image, subTexture.id, atlas, device)
     //}
   }
   return {id, label, size, wrappable, texture: subTexture}
@@ -173,7 +173,7 @@ export async function loadImageBitmap(url: string): Promise<ImageBitmap> {
 export async function loadImageSVG(url: string): Promise<ImageBitmap> {
   const response = await fetch(url)
   const blob = await response.blob()
-  const element = document.createElement('img')
+  const element = new Image()
   element.src = URL.createObjectURL(blob)
   await element.decode()
   const image = await createImageBitmap(element)
@@ -184,7 +184,7 @@ export async function loadImageSVG(url: string): Promise<ImageBitmap> {
 export async function loadImage(url: string): Promise<HTMLImageElement> {
   const response = await fetch(url)
   const blob = await response.blob()
-  const element = document.createElement('img')
+  const element = new Image()
   element.src = URL.createObjectURL(blob)
   await element.decode()
   return element

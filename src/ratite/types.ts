@@ -55,28 +55,10 @@ export type MeshVertex = {
 
 
 export type Mesh = {
-  label: string,
+  label:       string,
   vertexCount: number,
-  vertices: Vertex[]
+  vertices:    Vertex[]
 }
-
-/** Extended vertex format. Used for offline storage.
- * Includes texture ID which is later used to remap the texture coordinates.
- * Type: float32
- * Size: 10 floats / 40 bytes
- */
-export type XVertex = [
-  number,  // 0 x
-  number,  // 1 y
-  number,  // 2 z 
-  number,  // 3 w
-  number,  // 4 u
-  number,  // 5 v
-  number,  // 6 nx
-  number,  // 7 ny
-  number,  // 8 nz
-  number,  // 9 texture ID
-]
 
 /** Extended mesh format. Used for offline storage. */
 export type XMesh = {

@@ -1,21 +1,29 @@
 /** node script to build asset files */
 
 import * as fs from 'node:fs/promises'
-import * as Polyhedron from './build/ratite/builder/polyhedron.js'
-import { square, uniformScaleMeshPosition, uniformScaleMeshPositionUV } from './build/ratite/builder/mesh.js'
-import { serialiseMeshToJSON } from './build/ratite/mesh.js'
+import * as Polyhedron from './build/src/ratite/builder/polyhedron.js'
+import { tiledSquareMesh, embedMesh } from './build/src/ratite/builder/2d.js'
+import { setTextures } from './build/src/ratite/builder/mesh.js'
+import { serialiseMeshToJSON } from './build/src/ratite/mesh.js'
 
 async function main() {
-  const ground     = makeGround()
+  const ground     = await makeGround()
   const icosphere1 = await makeIcosphere(1)
   const icosphere3 = await makeIcosphere(3)
   const earth      = await makeEarth()
 }
 
-function makeGround() {
-  const mesh = uniformScaleMeshPositionUV(1000, square())
+async function makeGround() {
+  //const mesh = uniformScaleMeshPositionUV(1000, square())
+  const mesh = setTextures([1,2,6,0], embedMesh(tiledSquareMesh(6, 1)))
   mesh.name = 'ground'
   mesh.id = 0
+
+  const src = serialiseMeshToJSON(mesh)
+  const filename_json = `assets/mesh/generated/ground.json`
+  await fs.writeFile(filename_json, src)
+  console.log(`Wrote ${filename_json} (${mesh.vertexCount} vertices)`)
+
   return mesh
 }
 
@@ -26,6 +34,7 @@ async function makeEarth() {
   const src = serialiseMeshToJSON(mesh)
   const filename_json = `assets/mesh/generated/earth.json`
   await fs.writeFile(filename_json, src)
+  console.log(`Wrote ${filename_json} (${mesh.vertexCount} vertices)`)
 }
 
 async function makeIcosphere(n) {
@@ -34,6 +43,7 @@ async function makeIcosphere(n) {
   const src = serialiseMeshToJSON(mesh)
   const filename_json = `assets/mesh/generated/icosphere-${n}.json`
   await fs.writeFile(filename_json, src)
+  console.log(`Wrote ${filename_json} (${mesh.vertexCount} vertices)`)
   return mesh
 }
 

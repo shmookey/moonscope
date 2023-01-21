@@ -1,4 +1,4 @@
-import type {Mesh, XMesh, Vec2, Vec3, XVertex, MeshVertex, Quat} from "../types"
+import type {Mesh, XMesh, Vec2, Vec3, MeshVertex, Quat} from "../types"
 import {vec3, mat4, quat} from "gl-matrix"
 import { Vertex } from "../vertex.js"
 const { sqrt } = Math
@@ -156,7 +156,7 @@ export function setTextures(textureIDs: [number, number, number, number], mesh: 
 //
 
 /** Translate a mesh by a Vec3. */
-export function v3translateMesh(m: XMesh, t: Vec3): XMesh {
+export function translateMesh(m: XMesh, t: Vec3): XMesh {
   return { ...m, vertices: m.vertices.map(v => v3translateVertex(v, t)) }
 }
 

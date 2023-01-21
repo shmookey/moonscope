@@ -20,6 +20,13 @@ canvas {
   background: #00000088;
 }
 
+#fps-statistics {
+  position: absolute;
+  color: white;
+  background: #00000088;
+  right: 0;
+}
+
 #m1, #m2 {
   position: absolute;
   width: 4px;

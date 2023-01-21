@@ -14,6 +14,8 @@ import {loadResourceBundleFromDescriptor} from './ratite/resource.js'
 import {Antenna, setAntennaAltitude, setAntennaAzimuth} from './antenna.js'
 import Bundle from '../assets/bundle.json'
 import { createTelescope, defaultTelescopeDescriptor } from './telescope.js'
+import type { InfoMessage, InitMessage, Message, ReadyMessage } from './types.js'
+import { addWorkerEventListener, createWorkerController, initWorker, sendInputToWorker, startWorker, stopWorker } from './controller.js'
 const { sin, cos, log, sqrt, min, max, random, PI } = Math
 
 const MOUSE_SENSITIVITY = 0.001
@@ -115,29 +117,54 @@ async function main(): Promise<void> {
   const elems = {
     canvas: initCanvas(),
     layerCount: document.querySelector('#layer-count') as HTMLSpanElement,
+    fpsAvg: document.querySelector('#fps-avg').childNodes[0] as Text,
+    fpsMin: document.querySelector('#fps-min').childNodes[0] as Text,
+    fpsMax: document.querySelector('#fps-max').childNodes[0] as Text,
   }
-  const gpu = await GPU.initGPU(elems.canvas)
-  const renderer = await Render.createRenderer(
-    gpu.presentationFormat, 
-    gpu,
-    5000,  // instance storage capacity
-    40000, // vertex storage capacity
-  )
-  const bundle = await loadResourceBundleFromDescriptor(Bundle as unknown as ResourceBundleDescriptor, renderer)
+  //const gpu = await GPU.initGPU(elems.canvas)
+  //const renderer = await Render.createRenderer(
+  //  gpu.presentationFormat, 
+  //  gpu,
+  //  5000,  // instance storage capacity
+  //  40000, // vertex storage capacity
+  //)
+  //const bundle = await loadResourceBundleFromDescriptor(Bundle as unknown as ResourceBundleDescriptor, renderer)
 
-  let skyModel: SkyModelState = null;
-  (async () => {
-    skyModel = await initSkyVis(gpu)
-  })()
+  //let skyModel: SkyModelState = null;
+  //(async () => {
+  //  skyModel = await initSkyVis(gpu)
+  //})()
   const inputState = createInputState()
  
-  app.renderer = renderer
+  //app.renderer = renderer
 
-  const sceneState = await createScene(renderer.mainUniformBuffer, gpu)
-  const sceneGraph = bundle.scenes[0] //setupSceneGraph(renderer)
-  const mainCamera = sceneGraph.views.default.camera
-  const telescopeNode = getNodeByName('telescope', sceneGraph)
-  const telescope = createTelescope(telescopeNode, defaultTelescopeDescriptor, sceneGraph)
+  //const sceneState = await createScene(renderer.mainUniformBuffer, gpu)
+  //const sceneGraph = bundle.scenes[0] //setupSceneGraph(renderer)
+  //const mainCamera = sceneGraph.views.default.camera
+  //const telescopeNode = getNodeByName('telescope', sceneGraph)
+  //const telescope = createTelescope(telescopeNode, defaultTelescopeDescriptor, sceneGraph)
+
+  const worker = app.worker = createWorkerController()
+  addWorkerEventListener('info', (ev: InfoMessage) => {
+    elems.fpsAvg.data = ev.frameStats.average.toFixed(1)
+    elems.fpsMin.data = ev.frameStats.min.toFixed(1)
+    elems.fpsMax.data = ev.frameStats.max.toFixed(1)
+  }, worker)
+  addWorkerEventListener('ready', (ev: ReadyMessage) => {
+    console.log('worker ready')
+    startWorker(worker)
+  }, worker)
+  const presentationSize = {width: elems.canvas.width, height: elems.canvas.height}
+  const offscreen = elems.canvas.transferControlToOffscreen()
+  const initMessage: InitMessage = {
+    type:                'init',
+    id:                  0,
+    presentationSize:    presentationSize,
+    presentationFormat:  navigator.gpu.getPreferredCanvasFormat(),
+    statsUpdateInterval: 250,
+    canvas:              offscreen,
+  }
+  initWorker(initMessage, worker)
   //const antennaNode = getNodeByName('antenna', sceneGraph)
   //const antennaObject: AntennaObject = {
   //  mount: antennaNode.children[0] as ModelNode,
@@ -148,30 +175,31 @@ async function main(): Promise<void> {
   //}
   //app.antenna = antennaObject
 
-  sceneState.firstPersonCamera.position[1] = CAMERA_HEIGHT
-  app.sceneGraph = sceneGraph
+  //sceneState.firstPersonCamera.position[1] = CAMERA_HEIGHT
+  //app.sceneGraph = sceneGraph
   
   const layerCountTextNode: Text = elems.layerCount.childNodes[0] as Text
   function addVisibilities(count: number) {
-    if(count > 0) {
-      Sky.applyLayers(count, skyModel.visState, gpu)
-      Sky.updateSkyUniforms(skyModel.visState.layers, skyModel.skyEntity, gpu)
-      Sky.renderSkyToTexture(skyModel.skyEntity, gpu)
-      Skybox.writeSkyboxTextures(skyModel.skyEntity.outputTexture, sceneState.skybox, gpu)
-      layerCountTextNode.data = skyModel.visState.layers.toString()
-    }
-    //GPU.frame(gpu)
-    Render.renderFrame(sceneState, sceneGraph, renderer, gpu)
+//    if(count > 0) {
+//      Sky.applyLayers(count, skyModel.visState, gpu)
+//      Sky.updateSkyUniforms(skyModel.visState.layers, skyModel.skyEntity, gpu)
+//      Sky.renderSkyToTexture(skyModel.skyEntity, gpu)
+//      Skybox.writeSkyboxTextures(skyModel.skyEntity.outputTexture, sceneState.skybox, gpu)
+//      layerCountTextNode.data = skyModel.visState.layers.toString()
+//    }
+//    //GPU.frame(gpu)
+//    Render.renderFrame(sceneState, sceneGraph, renderer, gpu)
   }
 
   document.addEventListener('keydown', async ev => {
     //console.log(ev.code)
     switch(ev.code) {
       case 'KeyI':
-        Sky.getPixels(skyModel.visState, gpu)
+        //Sky.getPixels(skyModel.visState, gpu)
         break
       case 'Space':
-        addVisibilities(1)
+        //addVisibilities(1)
+        startWorker(worker)
         break
       case 'Enter':
         addVisibilities(10)
@@ -179,13 +207,15 @@ async function main(): Promise<void> {
       case 'Period':
         if(!inputState.mouseCaptured)
           elems.canvas.requestPointerLock()
+        
         break
       case 'Escape':
         if(inputState.mouseCaptured) 
           document.exitPointerLock()
+        stopWorker(worker)
         break
       case 'Backspace':
-        getAtlasAsImage()
+        //getAtlasAsImage()
         break
       case 'KeyZ':
         //setAntennaAltitude(PI/2, antennaObject)
@@ -196,25 +226,25 @@ async function main(): Promise<void> {
     }
   })
 
-  async function getAtlasAsImage() {
-    const imageBitmap = await getLayerAsImageBitmap(0, 3, renderer.atlas, gpu.device)
-    const canvas = document.createElement('canvas')
-    canvas.width = imageBitmap.width
-    canvas.height = imageBitmap.height
-    canvas.style.width  = `${imageBitmap.width}px`
-    canvas.style.height = `${imageBitmap.height}px`
-    const ctx = canvas.getContext('2d')
-    ctx.drawImage(imageBitmap, 0, 0)
-    const container = document.createElement('div')
-    container.style.width  = `${imageBitmap.width}px`
-    container.style.height = `${imageBitmap.height}px`
-    container.style.position = 'absolute'
-    container.style.top  = '0px' // `calc(50% - ${(imageBitmap.height + 10)/2}px)`
-    container.style.left = '0px' //`calc(50% - ${(imageBitmap.width + 10)/2}px)`
-    container.style.backgroundColor = '#000'
-    container.append(canvas)
-    document.body.append(container)
-  }
+//  async function getAtlasAsImage() {
+//    const imageBitmap = await getLayerAsImageBitmap(0, 3, renderer.atlas, gpu.device)
+//    const canvas = document.createElement('canvas')
+//    canvas.width = imageBitmap.width
+//    canvas.height = imageBitmap.height
+//    canvas.style.width  = `${imageBitmap.width}px`
+//    canvas.style.height = `${imageBitmap.height}px`
+//    const ctx = canvas.getContext('2d')
+//    ctx.drawImage(imageBitmap, 0, 0)
+//    const container = document.createElement('div')
+//    container.style.width  = `${imageBitmap.width}px`
+//    container.style.height = `${imageBitmap.height}px`
+//    container.style.position = 'absolute'
+//    container.style.top  = '0px' // `calc(50% - ${(imageBitmap.height + 10)/2}px)`
+//    container.style.left = '0px' //`calc(50% - ${(imageBitmap.width + 10)/2}px)`
+//    container.style.backgroundColor = '#000'
+//    container.append(canvas)
+//    document.body.append(container)
+//  }
 
   const movementSpeed = 0.01
   let lastTime = 0
@@ -223,109 +253,120 @@ async function main(): Promise<void> {
     if(document.pointerLockElement == elems.canvas) {
       inputState.mouseCaptured = true
       lastTime = performance.now()
-      requestAnimationFrame(renderFrame)
+      //requestAnimationFrame(renderFrame)
+      startWorker(worker)
     } else {
       inputState.mouseCaptured = false
+      stopWorker(worker)
     }
   })
 
   
   app.Sky = Sky
   app.GPU = GPU
-  app.gpu = gpu
-  app.scene = sceneState
-  app.visState = skyModel
+  //app.gpu = gpu
+  //app.scene = sceneState
+  //app.visState = skyModel
   app.glm = { mat4, vec3, quat }
   
-  let frame: number = 0
-  function renderFrame(currentTime: number): void {
-    if(inputState.mouseCaptured) {
-      const dt = currentTime - lastTime
-      lastTime = currentTime
-      let cameraMoved = true
-      let requireRepaint = true
-
-      //updateUniverse(app.universe, currentTime)
-      requireRepaint = updateWorldState(dt, sceneGraph)
-
-      // Handle mouse movement
-      const [dx, dy] = inputState.mouseMovement
-      if(dx != 0 || dy != 0) {
-        rotateFirstPersonCamera(MOUSE_SENSITIVITY * dy, MOUSE_SENSITIVITY * dx, sceneState.firstPersonCamera)
-        applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
-        inputState.mouseMovement[0] = 0
-        inputState.mouseMovement[1] = 0
-        cameraMoved = true
-      }
-
-      // Handle keyboard movement
-      if( inputState.keyDown['ArrowUp']) {
-        //moveFirstPersonCameraForward(-movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
-        //cameraMoved = true
-        //setAntennaAltitude(antennaObject.altitude + 0.001 * dt, antennaObject)
-        //requireRepaint = true
-      } else if( inputState.keyDown['ArrowDown']) {
-        //moveFirstPersonCameraForward(movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
-        //cameraMoved = true
-        //setAntennaAltitude(antennaObject.altitude - 0.001 * dt, antennaObject)
-        //requireRepaint = true
-      }
-      if( inputState.keyDown['ArrowLeft']) {
-        //setAntennaAzimuth(antennaObject.azimuth - 0.001 * dt, antennaObject)
-        //requireRepaint = true
-        //moveFirstPersonCameraRight(-movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
-        //cameraMoved = true
-      } else if( inputState.keyDown['ArrowRight']) {
-        //setAntennaAzimuth(antennaObject.azimuth + 0.001 * dt, antennaObject)
-        //requireRepaint = true
-        //moveFirstPersonCameraRight(movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
-        //cameraMoved = true
-      }
-      if(inputState.keyDown['KeyW'] ) {
-        moveFirstPersonCameraForward(-movementSpeed * dt, sceneState.firstPersonCamera)
-        cameraMoved = true
-      } else if(inputState.keyDown['KeyS'] ) {
-        moveFirstPersonCameraForward(movementSpeed * dt, sceneState.firstPersonCamera)
-        cameraMoved = true
-      }
-      if(inputState.keyDown['KeyA'] ) {
-        moveFirstPersonCameraRight(-movementSpeed * dt, sceneState.firstPersonCamera)
-        cameraMoved = true
-      } else if(inputState.keyDown['KeyD']) {
-        moveFirstPersonCameraRight(movementSpeed * dt, sceneState.firstPersonCamera)
-        cameraMoved = true
-      }
-      if(inputState.keyDown['KeyQ'] ) {
-        moveFirstPersonCameraUpScale(-movementSpeed * dt * 0.1, sceneState.firstPersonCamera)
-        cameraMoved = true
-      } else if(inputState.keyDown['KeyE']) {
-        moveFirstPersonCameraUpScale(movementSpeed * dt * 0.1, sceneState.firstPersonCamera)
-        cameraMoved = true
-      }
-      if(cameraMoved || requireRepaint) {
-        // TODO: fix this crap up
-        aTerribleWayOfUpdatingTheCamera_ReallyBad()
-        Render.renderFrame(sceneState, sceneGraph, renderer, gpu)
-      }
-      requestAnimationFrame(renderFrame)
-      frame++
-    }
     
+  function updateInput() {
+    sendInputToWorker(inputState, worker)
+    inputState.mouseMovement[0] = 0
+    inputState.mouseMovement[1] = 0
+    requestAnimationFrame(updateInput)
   }
-
-  function aTerribleWayOfUpdatingTheCamera_ReallyBad() {
-    applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
-    quat.invert(tempQ_1, sceneState.cameras[0].orientation)
-    mat4.fromQuat(tempMat4_1, tempQ_1)
-    mat4.fromTranslation(tempMat4_2, sceneState.cameras[0].position)
-    mat4.multiply(tempMat4_1, tempMat4_2, tempMat4_1)
-    tempMatrixTransform.matrix = tempMat4_1
-    setTransform(tempMatrixTransform, mainCamera)
-  }
-  aTerribleWayOfUpdatingTheCamera_ReallyBad()
-  Render.renderFrame(sceneState, sceneGraph, renderer, gpu)
-  performance.mark('rendered first frame')
-  requestAnimationFrame(renderFrame)
+  requestAnimationFrame(updateInput)
+  
+  //let frame: number = 0
+  //function renderFrame(currentTime: number): void {
+  //  if(inputState.mouseCaptured) {
+  //    const dt = currentTime - lastTime
+  //    lastTime = currentTime
+  //    let cameraMoved = true
+  //    let requireRepaint = true
+//
+  //    //updateUniverse(app.universe, currentTime)
+  //    requireRepaint = updateWorldState(dt, sceneGraph)
+//
+  //    // Handle mouse movement
+  //    const [dx, dy] = inputState.mouseMovement
+  //    if(dx != 0 || dy != 0) {
+  //      rotateFirstPersonCamera(MOUSE_SENSITIVITY * dy, MOUSE_SENSITIVITY * dx, sceneState.firstPersonCamera)
+  //      applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
+  //      inputState.mouseMovement[0] = 0
+  //      inputState.mouseMovement[1] = 0
+  //      cameraMoved = true
+  //    }
+//
+  //    // Handle keyboard movement
+  //    if( inputState.keyDown['ArrowUp']) {
+  //      //moveFirstPersonCameraForward(-movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
+  //      //cameraMoved = true
+  //      //setAntennaAltitude(antennaObject.altitude + 0.001 * dt, antennaObject)
+  //      //requireRepaint = true
+  //    } else if( inputState.keyDown['ArrowDown']) {
+  //      //moveFirstPersonCameraForward(movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
+  //      //cameraMoved = true
+  //      //setAntennaAltitude(antennaObject.altitude - 0.001 * dt, antennaObject)
+  //      //requireRepaint = true
+  //    }
+  //    if( inputState.keyDown['ArrowLeft']) {
+  //      //setAntennaAzimuth(antennaObject.azimuth - 0.001 * dt, antennaObject)
+  //      //requireRepaint = true
+  //      //moveFirstPersonCameraRight(-movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
+  //      //cameraMoved = true
+  //    } else if( inputState.keyDown['ArrowRight']) {
+  //      //setAntennaAzimuth(antennaObject.azimuth + 0.001 * dt, antennaObject)
+  //      //requireRepaint = true
+  //      //moveFirstPersonCameraRight(movementSpeed*0.04 * dt, sceneState.firstPersonCamera)
+  //      //cameraMoved = true
+  //    }
+  //    if(inputState.keyDown['KeyW'] ) {
+  //      moveFirstPersonCameraForward(-movementSpeed * dt, sceneState.firstPersonCamera)
+  //      cameraMoved = true
+  //    } else if(inputState.keyDown['KeyS'] ) {
+  //      moveFirstPersonCameraForward(movementSpeed * dt, sceneState.firstPersonCamera)
+  //      cameraMoved = true
+  //    }
+  //    if(inputState.keyDown['KeyA'] ) {
+  //      moveFirstPersonCameraRight(-movementSpeed * dt, sceneState.firstPersonCamera)
+  //      cameraMoved = true
+  //    } else if(inputState.keyDown['KeyD']) {
+  //      moveFirstPersonCameraRight(movementSpeed * dt, sceneState.firstPersonCamera)
+  //      cameraMoved = true
+  //    }
+  //    if(inputState.keyDown['KeyQ'] ) {
+  //      moveFirstPersonCameraUpScale(-movementSpeed * dt * 0.1, sceneState.firstPersonCamera)
+  //      cameraMoved = true
+  //    } else if(inputState.keyDown['KeyE']) {
+  //      moveFirstPersonCameraUpScale(movementSpeed * dt * 0.1, sceneState.firstPersonCamera)
+  //      cameraMoved = true
+  //    }
+  //    if(cameraMoved || requireRepaint) {
+  //      // TODO: fix this crap up
+  //      aTerribleWayOfUpdatingTheCamera_ReallyBad()
+  //      Render.renderFrame(sceneState, sceneGraph, renderer, gpu)
+  //    }
+  //    requestAnimationFrame(renderFrame)
+  //    frame++
+  //  }
+  //  
+  //}
+//
+  //function aTerribleWayOfUpdatingTheCamera_ReallyBad() {
+  //  applyFirstPersonCamera(sceneState.firstPersonCamera, sceneState.cameras[0])
+  //  quat.invert(tempQ_1, sceneState.cameras[0].orientation)
+  //  mat4.fromQuat(tempMat4_1, tempQ_1)
+  //  mat4.fromTranslation(tempMat4_2, sceneState.cameras[0].position)
+  //  mat4.multiply(tempMat4_1, tempMat4_2, tempMat4_1)
+  //  tempMatrixTransform.matrix = tempMat4_1
+  //  setTransform(tempMatrixTransform, mainCamera)
+  //}
+  //aTerribleWayOfUpdatingTheCamera_ReallyBad()
+  //Render.renderFrame(sceneState, sceneGraph, renderer, gpu)
+  //performance.mark('rendered first frame')
+  //requestAnimationFrame(renderFrame)
 }
 
 

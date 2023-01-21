@@ -1,6 +1,6 @@
 import type {GPUContext, Renderable} from './types'
 
-export async function initGPU(canvas: HTMLCanvasElement): Promise<GPUContext> {
+export async function initGPU(canvas: HTMLCanvasElement | OffscreenCanvas): Promise<GPUContext> {
   const adapter = await navigator.gpu.requestAdapter({
     powerPreference: 'high-performance',
   })

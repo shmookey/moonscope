@@ -270,6 +270,121 @@ export async function copyImageToSubTexture(
   }
 }
 
+/** Copy an ImageBitmap into a sub-texture.
+ * 
+ * Corrected version. Original needs to be removed.
+ */
+export async function copyImageBitmapToSubTexture2(
+  imageBitmap: ImageBitmap,
+  subTextureID: number,
+  atlas: Atlas,
+  device: GPUDevice): Promise<void> {
+
+if(!(subTextureID in atlas.subTextures)) {
+  throw new Error('Invalid sub-texture ID')
+}
+const subTexture = atlas.subTextures[subTextureID]
+for(let mipLevel=0; mipLevel<atlas.mipLevels; mipLevel++) {
+  const width = max(1, subTexture.width >> mipLevel)
+  const height = max(1, subTexture.height >> mipLevel)
+  const x = subTexture.x >> mipLevel
+  const y = subTexture.y >> mipLevel
+  const image = await createImageBitmap(imageBitmap, {
+    resizeWidth: width,
+    resizeHeight: height,
+    resizeQuality: 'high',
+  })
+  const imageCopy: GPUImageCopyExternalImage = {
+    source: image,
+    origin: [0,0],
+    flipY: true,
+  }
+  // main image
+  device.queue.copyExternalImageToTexture({
+    source: image,
+    origin: [0, 0],
+    flipY: true,
+  }, {
+    texture: atlas.texture,
+    mipLevel,
+    origin: [subTexture.x >> mipLevel, subTexture.y >> mipLevel, subTexture.layer],
+  }, {
+    width: max(1, subTexture.width >> mipLevel),
+    height: max(1, subTexture.height >> mipLevel),
+  })
+  if(subTexture.wrappable) {
+    // left border
+    device.queue.copyExternalImageToTexture({
+      source: image,
+      origin: [width/2, 0],
+      flipY: true,
+    }, {
+      texture: atlas.texture,
+      mipLevel,
+      origin: [
+        subTexture.region[0] >> mipLevel, 
+        y, 
+        subTexture.layer
+      ],
+    }, {
+      width: max(1, width/2),
+      height: max(1, height),
+    })
+    // right border
+    device.queue.copyExternalImageToTexture({
+      source: image,
+      origin: [0, 0],
+      flipY: true,
+    }, {
+      texture: atlas.texture,
+      mipLevel,
+      origin: [
+        x + width, 
+        y, 
+        subTexture.layer
+      ],
+    }, {
+      width: max(1, width/2),
+      height: max(1, height),
+    })
+    // top border
+    device.queue.copyExternalImageToTexture({
+      source: image,
+      origin: [0, height/2],
+      flipY: true,
+    }, {
+      texture: atlas.texture,
+      mipLevel,
+      origin: [
+        x,
+        subTexture.region[1] >> mipLevel, 
+        subTexture.layer
+      ],
+    }, {
+      width: max(1, width),
+      height: max(1, height/2),
+    })
+    // bottom border
+    device.queue.copyExternalImageToTexture({
+      source: image,
+      origin: [0, 0],
+      flipY: true,
+    }, {
+      texture: atlas.texture,
+      mipLevel,
+      origin: [
+        x,
+        y + height,  
+        subTexture.layer
+      ],
+    }, {
+      width: max(1, width),
+      height: max(1, height/2),
+    })
+  }
+}
+}
+
 
 /** Determine if two rectangles overlap. */
 function intersects(x1: number, y1: number, w1: number, h1: number, x2: number, y2: number, w2: number, h2: number): boolean {
