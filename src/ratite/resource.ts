@@ -1,9 +1,10 @@
 import type {ResourceBundleDescriptor, TextureResourceDescriptor, MeshResourceDescriptor, Atlas, 
-  ResourceBundle, TextureResource, MeshResource, Vertex, MeshStore, TextureRemapping, PipelineStore, ShaderStore, ShaderResourceDescriptor, PipelineDescriptor, MeshVertex, Renderer} from "./types"
+  ResourceBundle, TextureResource, MeshResource, MeshStore, TextureRemapping, PipelineStore, ShaderStore, ShaderResourceDescriptor, PipelineDescriptor, MeshVertex, Renderer} from "./types"
 import { addSubTexture, copyImageBitmapToSubTexture2, copyImageToSubTexture } from "./atlas.js"
 import {addMesh, getMeshById, serialiseVertices} from "./mesh.js"
 import {createPipeline} from "./pipeline.js"
 import {createSceneGraphFromDescriptor} from "./scene.js"
+import { createMaterial } from "./material.js"
 
 
 /** Load a resource bundle. */
@@ -22,6 +23,7 @@ export async function loadResourceBundleFromDescriptor(
   const {atlas, meshStore, device, pipelineLayout} = renderer
   const shaderStore = renderer.shaders
   const pipelineStore = renderer.pipelines
+  const materialStore = renderer.materials
   const presentationFormat = renderer.context.presentationFormat
 
   // Load textures
@@ -47,6 +49,15 @@ export async function loadResourceBundleFromDescriptor(
 
   await Promise.all([texturesPromise, meshesPromise, shadersPromise])
 
+  // Load materials
+  const materialResources = []
+  if('materials' in descriptor) {
+    for(let materialDescriptor of descriptor.materials) {
+      const material = createMaterial(materialStore, materialDescriptor)
+      materialResources.push(material)
+    }
+  }
+
   // Load pipelines
   for(let pipeline of descriptor.pipelines) {
     if(pipeline.name in pipelineStore)
@@ -68,6 +79,7 @@ export async function loadResourceBundleFromDescriptor(
     meshes: meshResources, 
     textures: textureResources,
     scenes: sceneResources,
+    materials: materialResources,
   }
 }
 

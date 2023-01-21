@@ -467,3 +467,12 @@ export async function getLayerAsImageBitmap(
   exportBuffer.unmap()
   return imageBitmap
 }
+
+/** Get a sub-texture by name.
+ * 
+ * For now, this uses the 'label' attribute, until I get around to adding a
+ * proper name field.
+ */
+export function getSubTextureByName(name: string, atlas: Atlas): SubTexture | null {
+  return atlas.subTextures.find(st => st.label === name) || null
+}

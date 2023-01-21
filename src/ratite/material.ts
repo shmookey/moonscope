@@ -27,9 +27,19 @@
  * material will not be synchronised with the GPU buffer automatically. The
  * `updateMaterial()` function will update the GPU buffer for a single material
  * if it is active, and `updateMaterials()` will update the whole buffer.
+ * 
+ * The materials manager uses a texture manager or "atlas" to resolves texture
+ * names in material descriptors to texture slots for shaders. Name resolution
+ * is performed at the time the descriptor is applied and not subsequently
+ * tracked. A future update to the texture atlas implementation will afford
+ * textures the same reference-count protections as materials. A material's
+ * textures may be updated by name with `applyTexturesDescriptor()` or by
+ * calling `applyMaterialDescriptor()` with only the `textures` property set.
+ * Only the textures that are specified in the descriptor will be updated, a
+ * null value clears the texture slot (sets it to zero).
  */
 
-import type { Material, MaterialDescriptor, MaterialState } from './types'
+import type { Atlas, Material, MaterialDescriptor, MaterialState, MaterialTexturesDescriptor } from './types'
 import {
   MATERIAL_RECORD_SIZE,
   MATERIAL_RECORD_OFFSET_AMBIENT,
@@ -39,10 +49,11 @@ import {
   MATERIAL_RECORD_OFFSET_TEXTURES,
   MATERIAL_RECORD_OFFSET_SHININESS,
 } from './constants.js'
+import { getSubTextureByName } from './atlas.js'
 
 
 /** Initialise the materials manager. */
-export function createMaterialState(bufferCapacity: number, device: GPUDevice): MaterialState {
+export function createMaterialState(bufferCapacity: number, atlas: Atlas, device: GPUDevice): MaterialState {
   const byteLength = bufferCapacity * MATERIAL_RECORD_SIZE
   const buffer = device.createBuffer({
     size:  byteLength,
@@ -52,6 +63,7 @@ export function createMaterialState(bufferCapacity: number, device: GPUDevice): 
     device,
     buffer,
     bufferCapacity,
+    atlas,
     bufferData:     new ArrayBuffer(byteLength),
     bufferUsage:    0,
     slots:          new Array(bufferCapacity).fill(null),
@@ -79,19 +91,79 @@ export function createMaterial(state: MaterialState, descriptor?: MaterialDescri
   }
   state.materials[material.id] = material
   if(descriptor)
-    applyMaterialDescriptor(descriptor, material)
+    applyMaterialDescriptor(material.id, descriptor, state)
   return material
 }
 
 /** Apply a material descriptor to a material. */
-export function applyMaterialDescriptor(descriptor: MaterialDescriptor, material: Material): void {
+export function applyMaterialDescriptor(id: number, descriptor: MaterialDescriptor, state: MaterialState): void {
+  if(!(id in state.materials))
+    throw new Error(`Invalid material ID: ${id}`)
+
+  const material = state.materials[id]
+
   material.name      = descriptor.name      ?? material.name
   material.ambient   = descriptor.ambient   ?? material.ambient
   material.diffuse   = descriptor.diffuse   ?? material.diffuse
   material.specular  = descriptor.specular  ?? material.specular
   material.emissive  = descriptor.emissive  ?? material.emissive
   material.shininess = descriptor.shininess ?? material.shininess
-  material.textures  = descriptor.textures  ?? material.textures
+  if(material.textures)
+    applyTexturesDescriptor(id, descriptor.textures, state)
+}
+
+/** Apply a textures descriptor to a material.
+ * 
+ * Only the textures that are specified in the descriptor will be updated, a
+ * null value clears the texture slot (sets it to zero). If a texture name is
+ * not found in the texture atlas, an error is thrown.
+ */
+export function applyTexturesDescriptor(id: number, descriptor: MaterialTexturesDescriptor, state: MaterialState): void {
+  if(!(id in state.materials))
+    throw new Error(`Invalid material ID: ${id}`)
+
+  const material = state.materials[id]
+
+  if('colour' in descriptor) {
+    if(descriptor.colour === null)
+      material.textures[0] = null
+    else {
+      const texture = getSubTextureByName(descriptor.colour, state.atlas)
+      if(texture === null)
+        throw new Error(`No such texture: ${descriptor.colour}`)
+      material.textures[0] = texture.id
+    }
+  }
+  if('normal' in descriptor) {
+    if(descriptor.normal === null)
+      material.textures[1] = null
+    else {
+      const texture = getSubTextureByName(descriptor.normal, state.atlas)
+      if(texture === null)
+        throw new Error(`No such texture: ${descriptor.normal}`)
+      material.textures[1] = texture.id
+    }
+  }
+  if('specular' in descriptor) {
+    if(descriptor.specular === null)
+      material.textures[2] = null
+    else {
+      const texture = getSubTextureByName(descriptor.specular, state.atlas)
+      if(texture === null)
+        throw new Error(`No such texture: ${descriptor.specular}`)
+      material.textures[2] = texture.id
+    }
+  }
+  if('emissive' in descriptor) {
+    if(descriptor.emissive === null)
+      material.textures[3] = null
+    else {
+      const texture = getSubTextureByName(descriptor.emissive, state.atlas)
+      if(texture === null)
+        throw new Error(`No such texture: ${descriptor.emissive}`)
+      material.textures[3] = texture.id
+    }
+  }
 }
 
 /** Activate a material. */

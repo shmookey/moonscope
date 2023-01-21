@@ -38,7 +38,7 @@ export async function createRenderer(
     atlasFormat, 
     atlasMipLevels, 
     gpu.device)
-  const materials = createMaterialState(materialsCapacity, gpu.device)
+  const materials = createMaterialState(materialsCapacity, atlas, gpu.device)
   const meshStore = createMeshStore(
     vertexStorageCapacity, 
     indexStorageCapacity, 

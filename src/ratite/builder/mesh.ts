@@ -1,4 +1,4 @@
-import type {Mesh, XMesh, Vec2, Vec3, MeshVertex, Quat} from "../types"
+import type {XMesh, Vec2, Vec3, MeshVertex, Quat} from "../types"
 import {vec3, mat4, quat} from "gl-matrix"
 import { Vertex } from "../vertex.js"
 const { sqrt } = Math
@@ -274,15 +274,15 @@ const tempV3_1 = vec3.create()
 //}
 
 
-function getBoundingBox(input: Mesh): BoundingBox {
-  const x      = input.vertices.map(([x, y, z, ..._]) => x).sort((a, b) => a - b)[0];
-  const y      = input.vertices.map(([x, y, z, ..._]) => y).sort((a, b) => a - b)[0];
-  const z      = input.vertices.map(([x, y, z, ..._]) => z).sort((a, b) => a - b)[0];
-  const width  = input.vertices.map(([x, y, z, ..._]) => x).sort((a, b) => b - a)[0] - x;
-  const height = input.vertices.map(([x, y, z, ..._]) => y).sort((a, b) => b - a)[0] - y;
-  const depth  = input.vertices.map(([x, y, z, ..._]) => z).sort((a, b) => b - a)[0] - z;
-  return {x, y, z, width, height, depth};
-}
+//function getBoundingBox(input: Mesh): BoundingBox {
+//  const x      = input.vertices.map(([x, y, z, ..._]) => x).sort((a, b) => a - b)[0];
+//  const y      = input.vertices.map(([x, y, z, ..._]) => y).sort((a, b) => a - b)[0];
+//  const z      = input.vertices.map(([x, y, z, ..._]) => z).sort((a, b) => a - b)[0];
+//  const width  = input.vertices.map(([x, y, z, ..._]) => x).sort((a, b) => b - a)[0] - x;
+//  const height = input.vertices.map(([x, y, z, ..._]) => y).sort((a, b) => b - a)[0] - y;
+//  const depth  = input.vertices.map(([x, y, z, ..._]) => z).sort((a, b) => b - a)[0] - z;
+//  return {x, y, z, width, height, depth};
+//}
 
 type BoundingBox = {
   x: number,

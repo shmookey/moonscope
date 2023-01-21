@@ -1,16 +1,5 @@
 import {NamedTupleMember} from "typescript";
 
-export type Renderable = {
-  pipeline: GPURenderPipeline;
-  vertexBuffer: GPUBuffer;
-  vertexCount: number;
-  instanceCount: number;
-  instanceBuffer?: GPUBuffer;
-  uniformBuffer?: GPUBuffer;
-  uniformBindGroup?: GPUBindGroup;
-  uniformData?: any;
-  outputTexture?: GPUTexture;
-}
 
 export type Vec2 = [number,number]
 export type Vec3 = [number,number, number]
@@ -23,26 +12,6 @@ export type Mat4 = [
 ]
 export type Quat = [number, number, number, number]
 
-/** Standard vertex format.
- * Type: float32
- * Size: 9 floats / 36 bytes
- */
-export type Vertex = [
-  number,  // x
-  number,  // y
-  number,  // z
-  number,  // w
-  number,  // u
-  number,  // v
-  number,  // t (atlas texture ID)
-  number,  // nx
-  number,  // ny
-  number,  // nz
-  number,  // umin
-  number,  // vmin
-  number,  // usize
-  number,  // vsize
-]
 
 export type MeshVertex = {
   position:  Vec4,     // Spatial coordinates
@@ -51,13 +20,6 @@ export type MeshVertex = {
   tangent:   Vec4,     // Tangent vector + spare
   bitangent: Vec4,     // Bitangent vector + spare
   textures:  Vec4,      // Texture IDs
-}
-
-
-export type Mesh = {
-  label:       string,
-  vertexCount: number,
-  vertices:    Vertex[]
 }
 
 /** Extended mesh format. Used for offline storage. */
@@ -129,16 +91,24 @@ export type PipelineDescriptor = {
   depthWrite:     boolean,      // Enable writing to the depth buffer
 }
 
+/** Material resource descriptor. 
+ * 
+ * For now, this is just a material descriptor. Loading materials from a file
+ * is not yet supported.
+ */
+export type MaterialResourceDescriptor = MaterialDescriptor
+
 export type ShaderStore   = { [name: string]: GPUShaderModule }
 export type PipelineStore = { [name: string]: GPURenderPipeline }
 
 export type ResourceBundleDescriptor = {
-  label?:    string,                      // Human-readable name for debugging
-  meshes:    MeshResourceDescriptor[],    // Mesh resources
-  textures:  TextureResourceDescriptor[], // Texture resources
-  shaders:   ShaderResourceDescriptor[],  // Shader resources
-  pipelines: PipelineDescriptor[],        // Render pipelines
-  scenes:    SceneGraphDescriptor[],      // Scene descriptions
+  label?:    string,                       // Human-readable name for debugging
+  meshes:    MeshResourceDescriptor[],     // Mesh resources
+  textures:  TextureResourceDescriptor[],  // Texture resources
+  shaders:   ShaderResourceDescriptor[],   // Shader resources
+  pipelines: PipelineDescriptor[],         // Render pipelines
+  scenes:    SceneGraphDescriptor[],       // Scene descriptions
+  materials: MaterialResourceDescriptor[], // Material resources
 }
 
 export type ResourceBundle = {
@@ -146,6 +116,7 @@ export type ResourceBundle = {
   meshes:        MeshResource[],         // Mesh resources
   textures:      TextureResource[],      // Texture resources
   scenes:        SceneGraph[],           // Scene graphs
+  materials:     Material[],             // Material resources
 }
 
 /** Storage type for geometry (mesh) data.
@@ -170,6 +141,11 @@ export type MeshStore = {
   nextIndex:        number,                 // Index of next vertex
   nextIndexOffset:  number,                 // Offset in index buffer of next index
 }
+
+
+//
+//    TEXTURE ATLAS
+//
 
 /** Texture atlas. 
  * 
@@ -210,32 +186,11 @@ export type SubTexture = {
 }
 export type Region = [number, number, number, number]  // x, y, width, height
 
-/** Describes rendering work to be done.
- * May be combined to optimise the number of draw calls.
- */
-export type DrawCallDescriptor = {
-  id:              number,
-  label?:          string,
-  vertexBuffer:    GPUBuffer,
-  vertexPointer:   number,
-  vertexCount:     number,
-  instanceBuffer:  GPUBuffer,
-  instancePointer: number,
-  instanceCount:   number,
-  bindGroup:       GPUBindGroup,
-  pipeline:        GPURenderPipeline,
-  indexBuffer:     GPUBuffer,
-  indexPointer:    number,
-  indexCount:      number,
-  indexOffset:     number,
-}
 
-/** A renderable inhabitant of a Scene. */
-export type Entity = {
-  name:            string,
-  meshId:          number, // ID of mesh resource
-  instanceId:      number, // Byte offset location in instance buffer
-}
+
+//
+//    INSTANCE MANAGER
+//
 
 /** State object for the instance allocator. */
 export type InstanceAllocator = {
@@ -270,6 +225,11 @@ export type InstanceRecord = {
   storageSlot:     number,        // Uniform index for shaders
 }
 
+
+//
+//    CAMERA TYPES
+//
+
 /** Camera type.
  * 
  * Changes mark the camera as "dirty" so that the renderer knows to propagate
@@ -295,41 +255,45 @@ export type FirstPersonCamera = {
   yaw: number,
 }
 
+
+//
+//    LEGACY SCENE ABSTRACTION
+//    To be removed / replaced
+//
+
+export type Scene = {
+  skybox:            SkyboxState,
+  nodes:             Node[],
+  cameras:           Camera[],
+  firstPersonCamera: FirstPersonCamera,
+}
+
+export type SkyboxState = {
+  pipeline:          GPURenderPipeline;
+  vertexBuffer:      GPUBuffer;
+  vertexCount:       number;
+  uniformBindGroup?: GPUBindGroup;
+  texture:           GPUTexture;
+}
+
 /** Model record.
  * 
  * Links a mesh resource to a render pipeline, instance data allocation and a 
  * draw call.
  */
 export type Model = {
-  id: number,             // Model ID
-  name: string,           // Human-readable name for convenient lookup
-  meshId: number,         // ID of mesh resource
-  allocationId: number,   // ID of instance allocation
-  drawCallId: number,     // ID of draw call
-  pipelineName: string,   // Name of pipeline to use for rendering
-}
-
-
-export type Scene = {
-  skybox: SkyboxState,
-  nodes: Node[],
-  cameras: Camera[],
-  firstPersonCamera: FirstPersonCamera,
-}
-
-export type SkyboxState = {
-  pipeline: GPURenderPipeline;
-  vertexBuffer: GPUBuffer;
-  vertexCount: number;
-  uniformBindGroup?: GPUBindGroup;
-  texture: GPUTexture;
+  id:           number,  // Model ID
+  name:         string,  // Human-readable name for convenient lookup
+  meshId:       number,  // ID of mesh resource
+  allocationId: number,  // ID of instance allocation
+  drawCallId:   number,  // ID of draw call
+  pipelineName: string,  // Name of pipeline to use for rendering
 }
 
 
 //
 //    SCENE GRAPH
 //
-
 
 /** Scene graph backend.
  * 
@@ -627,6 +591,26 @@ export type Renderer = {
   materials:           MaterialState,
 }
 
+/** Describes rendering work to be done.
+ * May be combined to optimise the number of draw calls.
+ */
+export type DrawCallDescriptor = {
+  id:              number,
+  label?:          string,
+  vertexBuffer:    GPUBuffer,
+  vertexPointer:   number,
+  vertexCount:     number,
+  instanceBuffer:  GPUBuffer,
+  instancePointer: number,
+  instanceCount:   number,
+  bindGroup:       GPUBindGroup,
+  pipeline:        GPURenderPipeline,
+  indexBuffer:     GPUBuffer,
+  indexPointer:    number,
+  indexCount:      number,
+  indexOffset:     number,
+}
+
 export type GPUContext = {
   adapter:              GPUAdapter;
   device:               GPUDevice;
@@ -639,6 +623,18 @@ export type GPUContext = {
   aspect:               number;
 }
 
+// Legacy - to be removed
+export type Renderable = {
+  pipeline: GPURenderPipeline;
+  vertexBuffer: GPUBuffer;
+  vertexCount: number;
+  instanceCount: number;
+  instanceBuffer?: GPUBuffer;
+  uniformBuffer?: GPUBuffer;
+  uniformBindGroup?: GPUBindGroup;
+  uniformData?: any;
+  outputTexture?: GPUTexture;
+}
 
 
 //
@@ -719,14 +715,21 @@ export type Material = {
   usage:       number,         // Reference count
 }
 
+export type MaterialTexturesDescriptor = {
+  colour?:   string | null,  // Texture name for colour
+  normal?:   string | null,  // Texture name for normal map
+  specular?: string | null,  // Texture name for specular map
+  emissive?: string | null,  // Texture name for emissive map
+}
+
 export type MaterialDescriptor = {
-  name?:        string,        // Human-readable name
-  ambient?:     Vec4,          // Ambient colour
-  diffuse?:     Vec4,          // Diffuse colour
-  specular?:    Vec4,          // Specular colour
-  emissive?:    Vec4,          // Emissive colour
-  shininess?:   number,        // Shininess coefficient
-  textures?:    Vec4,          // Texture IDs for colour, normal, specular, emissive
+  name?:        string,                     // Human-readable name
+  ambient?:     Vec4,                       // Ambient colour
+  diffuse?:     Vec4,                       // Diffuse colour
+  specular?:    Vec4,                       // Specular colour
+  emissive?:    Vec4,                       // Emissive colour
+  shininess?:   number,                     // Shininess coefficient
+  textures?:    MaterialTexturesDescriptor, // Texture names for colour, normal, specular, emissive
 }
 
 export type MaterialState = {
@@ -738,4 +741,5 @@ export type MaterialState = {
   bufferData:     ArrayBuffer, // Local copy of buffer data
   device:         GPUDevice,   // GPU device context
   slots:          Material[],  // List of active materials in slot order
+  atlas:          Atlas        // Texture atlas for material textures
 }
