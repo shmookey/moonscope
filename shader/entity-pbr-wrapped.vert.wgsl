@@ -56,8 +56,8 @@ struct Lighting {
 
 @group(0) @binding(0) var<uniform> uniforms:     Uniforms;
 @group(0) @binding(1) var<uniform> lighting:     Lighting;
-@group(0) @binding(2) var<storage> instanceData: InstanceData;
-@group(0) @binding(3) var<storage> atlasData:    AtlasData;
+@group(0) @binding(3) var<storage> instanceData: InstanceData;
+@group(0) @binding(4) var<storage> atlasData:    AtlasData;
 
 fn extractRotation(m: mat4x4<f32>) -> mat4x4<f32> {
   var c0 = m[0];

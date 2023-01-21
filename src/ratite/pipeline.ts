@@ -18,23 +18,28 @@ const bindGroupLayoutDescriptor: GPUBindGroupLayoutDescriptor = {
     visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
     buffer: { type: 'uniform' },
   }, { 
-    // Instance data
+    // Materials data
     binding: 2, 
     visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
     buffer: { type: 'read-only-storage' },
-  }, {
-    // Atlas metadata
+  }, { 
+    // Instance data
     binding: 3, 
     visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
     buffer: { type: 'read-only-storage' },
   }, {
-    // Sampler
+    // Atlas metadata
     binding: 4, 
+    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+    buffer: { type: 'read-only-storage' },
+  }, {
+    // Sampler
+    binding: 5, 
     visibility: GPUShaderStage.FRAGMENT,
     sampler: { type: 'filtering' },
   }, {
     // Atlas texture    
-    binding: 5,
+    binding: 6,
     visibility: GPUShaderStage.FRAGMENT,
     texture: { 
       sampleType: 'float', 
@@ -81,14 +86,15 @@ export function createMainBindGroupLayout(device: GPUDevice): GPUBindGroupLayout
 }
 
 export function createBindGroup( 
-  label: string,
-  layout: GPUBindGroupLayout,
-  uniformBuffer: GPUBuffer,
-  lightingBuffer: GPUBuffer,
-  storageBuffer: GPUBuffer,
-  atlas: Atlas,
-  sampler: GPUSampler,
-  device: GPUDevice): GPUBindGroup {
+  label:           string,
+  layout:          GPUBindGroupLayout,
+  uniformBuffer:   GPUBuffer,
+  lightingBuffer:  GPUBuffer,
+  materialsBuffer: GPUBuffer,
+  storageBuffer:   GPUBuffer,
+  atlas:           Atlas,
+  sampler:         GPUSampler,
+  device:          GPUDevice): GPUBindGroup {
 
   const textureView = atlas.texture.createView({
     label:           `${label}::texture-view`,
@@ -102,10 +108,11 @@ export function createBindGroup(
     entries: [
       { binding: 0, resource: { buffer: uniformBuffer } },
       { binding: 1, resource: { buffer: lightingBuffer } },
-      { binding: 2, resource: { buffer: storageBuffer } }, 
-      { binding: 3, resource: { buffer: atlas.metadataBuffer } },
-      { binding: 4, resource: sampler }, 
-      { binding: 5, resource: textureView },
+      { binding: 2, resource: { buffer: materialsBuffer } },
+      { binding: 3, resource: { buffer: storageBuffer } }, 
+      { binding: 4, resource: { buffer: atlas.metadataBuffer } },
+      { binding: 5, resource: sampler }, 
+      { binding: 6, resource: textureView },
     ]
   })
   return bindGroup

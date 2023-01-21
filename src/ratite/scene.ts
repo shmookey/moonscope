@@ -49,6 +49,7 @@ export function createSceneGraph(
     renderer.bindGroupLayout,
     uniformBuffer,
     lightingState.buffer,
+    renderer.materials.buffer,
     renderer.instanceAllocator.storageBuffer,
     renderer.atlas,
     renderer.mainSampler,

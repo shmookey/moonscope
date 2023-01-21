@@ -129,6 +129,8 @@ export function deactivateLightSource(id: number, state: LightingState): void {
     state.slots[i - 1] = state.slots[i]
     state.slots[i - 1].slot = i - 1
   }
+  
+  state.bufferUsage--
 }
 
 /** Get a light source by ID. */

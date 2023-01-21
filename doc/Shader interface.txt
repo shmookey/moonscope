@@ -1,37 +1,40 @@
-This file documents vertex attributes and the shader interface generally.
+This file documents the shader interface for Entity-compatible pipelines.
+Shaders that implement this layout are able to be used with the default
+SceneGraph pipeline.
 
-Vertex (shader interface)
+Pipeline layout
 
-  0  position    float32x4  16    Position coordinates
-  1  uv          float32x2   8    Texture coordinates
-  2  normal      snorm16x4   8    Normal vector + spare
-  3  tangent     snorm16x4   8    Tangent vector + spare
-  4  bitangent   snorm16x4   8    Bitangent vector + spare
-  5  textures    uint32x4   16    Texture IDs (colour, normal, specular, occlusion)
-  6  instanceId  uint32      4    Instance slot, for instance uniforms
+Bind group 0: Default
+  
+  SLOT  NAME      TYPE                      VISIBILITY       DESCRIPTION
+     0  uniform   buffer/uniform            vertex,fragment  Basic uniforms
+     1  lighting  buffer/uniform            vertex,fragment  Light source data
+     2  material  buffer/read-only-storage  vertex,fragment  Material data   
+     3  instance  buffer/read-only-storage  vertex,fragment  Instance data
+     4  atlas     buffer/read-only-storage  vertex,fragment  Atlas metadata
+     5  sampler   sampler/filtering         fragment         Texture sampler
+     6  textures  texture/2d-array          fragment         Texture atlas
+
+
+Vertex attributes
+
+SLOT  NAME        TYPE       SIZE  DESCRIPTION
+   0  position    float32x4    16  Position coordinates
+   1  uv          float32x2     8  Texture coordinates
+   2  normal      snorm16x4     8  Normal vector + spare
+   3  tangent     snorm16x4     8  Tangent vector + spare
+   4  bitangent   snorm16x4     8  Bitangent vector + spare
+   5  textures    uint32x4     16  Texture IDs (colour, normal, specular, occlusion)
+   6  instanceId  uint32        4  Instance slot, for instance uniforms
 
   Size: 68 bytes
 
-
-
-Vertex (storage)
-
-SLOT BYTE NAME      FORMAT    TYPE     SIZE  DESCRIPTION
-   0    0 position  float32x4 vec4<f32>  16  Position coordinates
-   1   16 uv        float32x2 vec2<f32>   8  Texture coordinates
-   2   24 normal    snorm16x4 vec4<f32>   8  Normal vector + spare
-   3   32 tangent   snorm16x4 vec4<f32>   8  Tangent vector + spare
-   4   40 bitangent snorm16x4 vec4<f32>   8  Bitangent vector + spare
-   5   48 textures  uint32x4  vec4<u32>  16  Texture IDs
-
-  Size: 64 bytes
-
-
 Uniforms struct
 
-  mat4x4<f32>             view           View matrix
-  mat4x4<f32>             projection     Projection matrix
-  f32                     time           Time in milliseconds
+  TYPE          NAME        DESCRIPTION
+  mat4x4<f32>   view        View matrix
+  mat4x4<f32>   projection  Projection matrix
+  f32           time        Time in milliseconds
 
   Size: 1152 bytes
 
@@ -48,3 +51,17 @@ LightSource struct
    100  vec2<f32>  cone         Cone angle (inner, outer)
 
   Size: 108 bytes
+
+
+Material struct
+
+  BYTE  TYPE       NAME         DESCRIPTION
+     0  vec4<f32>  ambient      Ambient colour
+    16  vec4<f32>  diffuse      Diffuse colour
+    32  vec4<f32>  specular     Specular colour
+    48  vec4<f32>  emissive     Emissive colour
+    64  vec4<u32>  textures     Texture IDs (colour, normal, specular, emissive)
+    80  f32        shininess    Specular shininess
+
+  Size: 84 bytes / 96 bytes (aligned)
+

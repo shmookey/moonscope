@@ -37,9 +37,9 @@ struct AtlasData {
 
 @group(0) @binding(0) var<uniform> uniforms:     Uniforms;
 @group(0) @binding(1) var<uniform> lighting:     Lighting;
-@group(0) @binding(3) var<storage> atlasData:    AtlasData;
-@group(0) @binding(4) var          mySampler:    sampler;
-@group(0) @binding(5) var          atlas:        texture_2d_array<f32>;
+@group(0) @binding(4) var<storage> atlasData:    AtlasData;
+@group(0) @binding(5) var          mySampler:    sampler;
+@group(0) @binding(6) var          atlas:        texture_2d_array<f32>;
 
 //const viewDirection = vec3<f32>(  0.0,  0.0,  1.0);
 

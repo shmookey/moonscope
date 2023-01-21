@@ -624,18 +624,19 @@ export type Renderer = {
   pipelines:           PipelineStore,
   shaders:             ShaderStore,
   msaaCount:           number,
+  materials:           MaterialState,
 }
 
 export type GPUContext = {
-  adapter: GPUAdapter;
-  device: GPUDevice;
-  context: GPUCanvasContext;
-  modules: { [k: string]: GPUShaderModule };
-  presentationFormat: GPUTextureFormat;
+  adapter:              GPUAdapter;
+  device:               GPUDevice;
+  context:              GPUCanvasContext;
+  modules:              { [k: string]: GPUShaderModule };
+  presentationFormat:   GPUTextureFormat;
   renderPassDescriptor: GPURenderPassDescriptor;
-  entities: Renderable[];
-  presentationSize: { width: number; height: number };
-  aspect: number;
+  entities:             Renderable[];
+  presentationSize:     { width: number; height: number };
+  aspect:               number;
 }
 
 
@@ -698,4 +699,43 @@ export type LightingState = {
   slots:          LightSource[],  // List of active light sources in slot order
   nextSourceID:   number,         // Next light source ID to allocate
   device:         GPUDevice,      // GPU device context
+}
+
+
+//
+//    MATERIALS
+//
+
+export type Material = {
+  id:          number,         // Unique ID for material
+  name:        string,         // Human-readable name
+  slot:        number | null,  // Buffer slot for active material
+  ambient:     Vec4,           // Ambient colour
+  diffuse:     Vec4,           // Diffuse colour
+  specular:    Vec4,           // Specular colour
+  emissive:    Vec4,           // Emissive colour
+  shininess:   number,         // Shininess coefficient
+  textures:    Vec4,           // Texture IDs for colour, normal, specular, emissive
+  usage:       number,         // Reference count
+}
+
+export type MaterialDescriptor = {
+  name?:        string,        // Human-readable name
+  ambient?:     Vec4,          // Ambient colour
+  diffuse?:     Vec4,          // Diffuse colour
+  specular?:    Vec4,          // Specular colour
+  emissive?:    Vec4,          // Emissive colour
+  shininess?:   number,        // Shininess coefficient
+  textures?:    Vec4,          // Texture IDs for colour, normal, specular, emissive
+}
+
+export type MaterialState = {
+  materials:      Material[],  // List of materials indexed by ID
+  nextMaterialID: number,      // Next material ID to allocate
+  bufferCapacity: number,      // Maximum number of materials in buffer
+  bufferUsage:    number,      // Current number of materials in buffer
+  buffer:         GPUBuffer,   // Uniform buffer to store material data
+  bufferData:     ArrayBuffer, // Local copy of buffer data
+  device:         GPUDevice,   // GPU device context
+  slots:          Material[],  // List of active materials in slot order
 }

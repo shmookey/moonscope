@@ -42,10 +42,10 @@ struct AtlasData {
 
 @group(0) @binding(0) var<uniform> uniforms:     Uniforms;
 @group(0) @binding(1) var<uniform> lighting:     Lighting;
-@group(0) @binding(2) var<storage> instanceData: InstanceData;
-@group(0) @binding(3) var<storage> atlasData:    AtlasData;
-@group(0) @binding(4) var          mySampler:    sampler;
-@group(0) @binding(5) var          atlas:        texture_2d_array<f32>;
+@group(0) @binding(3) var<storage> instanceData: InstanceData;
+@group(0) @binding(4) var<storage> atlasData:    AtlasData;
+@group(0) @binding(5) var          mySampler:    sampler;
+@group(0) @binding(6) var          atlas:        texture_2d_array<f32>;
 
 fn attenuate(dist: f32, attenuation: vec4<f32>) -> f32 {
   return 1.0 / (attenuation.x + 

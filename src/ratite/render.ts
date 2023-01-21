@@ -10,6 +10,7 @@ import {INDEX_SIZE, INSTANCE_INDEX_SIZE, UNIFORM_BUFFER_FLOATS,
 import {createMeshStore} from './mesh.js'
 import {updateModelViews} from './scene.js'
 import {updateLightingBuffer} from './lighting.js'
+import { createMaterialState } from './material.js'
 
 
 export async function createRenderer(
@@ -23,6 +24,7 @@ export async function createRenderer(
     atlasFormat: GPUTextureFormat       = 'rgba8unorm',
     atlasMipLevels: number              = 6,
     msaaCount: number                   = 1,
+    materialsCapacity: number           = 100,
     ): Promise<Renderer> {
   
   const outputSize: [number,number] = [gpu.presentationSize.width, gpu.presentationSize.height]
@@ -36,6 +38,7 @@ export async function createRenderer(
     atlasFormat, 
     atlasMipLevels, 
     gpu.device)
+  const materials = createMaterialState(materialsCapacity, gpu.device)
   const meshStore = createMeshStore(
     vertexStorageCapacity, 
     indexStorageCapacity, 
@@ -81,17 +84,18 @@ export async function createRenderer(
     pipelines,
     shaders,
     msaaCount,
+    materials,
   }
 }
 
 /** Render the scene from the view of a given camera. */
 export function renderView(
-    cam: Camera, 
-    scene: Scene, 
+    cam:        Camera, 
+    scene:      Scene, 
     sceneGraph: SceneGraph,
-    state: Renderer, 
-    pass: GPURenderPassDescriptor, 
-    gpu: GPUContext) {
+    state:      Renderer, 
+    pass:       GPURenderPassDescriptor, 
+    gpu:        GPUContext) {
 
   // Todo: only update if camera is dirty
   //getCameraViewMatrix(state.viewMatrix, cam)

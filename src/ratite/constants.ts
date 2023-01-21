@@ -27,3 +27,14 @@ export const LIGHT_RECORD_OFFSET_SPECULAR    =  96  // Byte offset of light sour
 export const LIGHT_RECORD_OFFSET_CONE        = 112  // Byte offset of light source cone
 
 export const LIGHT_SOURCE_TYPE = {point: 0, directional: 1, spot: 2} // Light source type enum
+
+// Material uniforms
+
+export const MATERIAL_RECORD_SIZE             = 96 // Byte length of material record uniform
+export const MATERIAL_RECORD_OFFSET_AMBIENT   = 0  // Byte offset of material ambient colour
+export const MATERIAL_RECORD_OFFSET_DIFFUSE   = 16 // Byte offset of material diffuse colour
+export const MATERIAL_RECORD_OFFSET_SPECULAR  = 32 // Byte offset of material specular colour
+export const MATERIAL_RECORD_OFFSET_EMISSIVE  = 48 // Byte offset of material emissive colour
+export const MATERIAL_RECORD_OFFSET_TEXTURES  = 64 // Byte offset of material textures
+export const MATERIAL_RECORD_OFFSET_SHININESS = 80 // Byte offset of material shininess
+
