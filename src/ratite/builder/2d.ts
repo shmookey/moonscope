@@ -92,7 +92,7 @@ function equal(a: Vec2, b: Vec2): boolean {
 /** Remove duplicate vertices from a mesh.
  *  Indices referring to removed vertices are updated.
  *  A vertex is a duplicate if it has the same position and UV coordinates as
- *  another vertex.
+ *  another vertex.   
  */
 export function simplifyMesh2D(mesh: Mesh2D): Mesh2D {
   const vertices: Vertex[] = []
@@ -183,6 +183,7 @@ export function embedMesh(mesh: Mesh2D): XMesh {
     name:        '',
     vertexCount: vertices.length,
     indexCount:  mesh.indices.length,
+    material:    'default',
   }
 }
 

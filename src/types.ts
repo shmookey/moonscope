@@ -1,8 +1,8 @@
 /** Types used in the moonscope app. */
 
-import { CameraNode, GPUContext, Renderer, Scene, SceneGraph } from "./ratite/types"
+import { RatiteError } from "./ratite/error";
+import { CameraNode, ErrorType, GPUContext, Renderer, Scene, SceneGraph } from "./ratite/types"
 import type { Telescope } from "./telescope"
-
 
 //
 //    Page message types
@@ -16,6 +16,8 @@ export type MessageType =
 export type Message = 
     InitMessage | StartMessage | StopMessage | InputMessage |
     InfoMessage | ErrorMessage | ReadyMessage | StartedMessage | StoppedMessage
+  
+
 
 /** Base type for message-based communication between workers and the main thread.
  * 
@@ -34,7 +36,6 @@ export interface InitMessage extends MessageBase {
   type:                'init',           // Message type.
   canvas:              OffscreenCanvas,  // Canvas to render to.
   presentationSize:    { width: number; height: number }, // Size of the presentation canvas.
-  presentationFormat:  GPUTextureFormat, // Canvas texture format 
   statsUpdateInterval: number,           // Interval between frame statistics messages.
 }
 
@@ -61,10 +62,17 @@ export interface InfoMessage extends MessageBase {
   frameStats: FrameStats,   // Frame statistics.
 }
 
-/** Message sent from a worker to the page to report an error. */
+/** Message sent from a worker to the page to report an error.
+ * 
+ * Since derived classes of `Error` don't serialize well, we pull out the
+ * interesting bits and send them separately alongside the original error object,
+ * which is serialized.
+ */
 export interface ErrorMessage extends MessageBase {
-  type:    'error',        // Message type.
-  message: string,         // Error message.
+  type:      'error',      // Message type.
+  errorType: ErrorType,    // Error type.
+  message:   string,       // Error message.
+  error:     Error,        // Error object.
 }
 
 /** Worker ready notification. */

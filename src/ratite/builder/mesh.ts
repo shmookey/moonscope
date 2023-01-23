@@ -1,3 +1,8 @@
+// So, this file originally contained all sorts of geometry-building functions,
+// now it is a graveyard of old code. I'm keeping it around for now because
+// I haven't got around to figuring out where the last few useful bits should
+// go.
+
 import type {XMesh, Vec2, Vec3, MeshVertex, Quat} from "../types"
 import {vec3, mat4, quat} from "gl-matrix"
 import { Vertex } from "../vertex.js"
@@ -40,26 +45,26 @@ const { sqrt } = Math
 //}
 
 /** Unit square on the XZ plane centred at the origin, UV mapped from -X,+Z */
-export function square(): XMesh {
-  const vertices: MeshVertex[] = [
-    Vertex([-0.5, 0,  0.5], [0, 0], [0,1,0,0], [1,0,0,0], [0,0,1,0]), // -X+Z
-    Vertex([ 0.5, 0,  0.5], [1, 0], [0,1,0,0], [1,0,0,0], [0,0,1,0]), // +X+Z
-    Vertex([ 0.5, 0, -0.5], [1, 1], [0,1,0,0], [1,0,0,0], [0,0,1,0]), // +X-Z
-    Vertex([-0.5, 0, -0.5], [0, 1], [0,1,0,0], [1,0,0,0], [0,0,1,0]), // -X-Z
-  ]
-  const triangles: [number,number,number][] = [
-    [0, 1, 2],
-    [0, 2, 3],
-  ]
-  return {
-    id: 0,
-    name: 'square',
-    vertexCount: 6,
-    vertices: triangles.flatMap(xs => xs.map(i => vertices[i])),
-    indexCount: 6,
-    indices: triangles.flat(),
-  }
-}
+//export function square(): XMesh {
+//  const vertices: MeshVertex[] = [
+//    Vertex([-0.5, 0,  0.5], [0, 0], [0,1,0,0], [1,0,0,0], [0,0,1,0]), // -X+Z
+//    Vertex([ 0.5, 0,  0.5], [1, 0], [0,1,0,0], [1,0,0,0], [0,0,1,0]), // +X+Z
+//    Vertex([ 0.5, 0, -0.5], [1, 1], [0,1,0,0], [1,0,0,0], [0,0,1,0]), // +X-Z
+//    Vertex([-0.5, 0, -0.5], [0, 1], [0,1,0,0], [1,0,0,0], [0,0,1,0]), // -X-Z
+//  ]
+//  const triangles: [number,number,number][] = [
+//    [0, 1, 2],
+//    [0, 2, 3],
+//  ]
+//  return {
+//    id: 0,
+//    name: 'square',
+//    vertexCount: 6,
+//    vertices: triangles.flatMap(xs => xs.map(i => vertices[i])),
+//    indexCount: 6,
+//    indices: triangles.flat(),
+//  }
+//}
 
 /** Set the textures for all vertices in a mesh. */
 export function setTextures(textureIDs: [number, number, number, number], mesh: XMesh): XMesh {

@@ -37,9 +37,18 @@
  * calling `applyMaterialDescriptor()` with only the `textures` property set.
  * Only the textures that are specified in the descriptor will be updated, a
  * null value clears the texture slot (sets it to zero).
+ * 
+ * As the material manager must look up textures by name, it must be
+ * initialised after the texture manager, and materials should only be added
+ * after any textures they depend on have been registered with it. It is not
+ * necessary for the texture data to be loaded, only that the texture names
+ * have been associated with a texture ID.
  */
 
-import type { Atlas, Material, MaterialDescriptor, MaterialState, MaterialTexturesDescriptor } from './types'
+import type { 
+  Atlas, Material, MaterialDescriptor, MaterialState, 
+  MaterialTexturesDescriptor 
+} from './types'
 import {
   MATERIAL_RECORD_SIZE,
   MATERIAL_RECORD_OFFSET_AMBIENT,

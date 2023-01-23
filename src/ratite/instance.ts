@@ -1,5 +1,10 @@
 /** instance.ts -- Instance allocator for WebGPU
  * 
+ * Note: this was one of the earlier modules I wrote for this project and while
+ * it is reasonably close to correct, some of the language and design is not
+ * consistent with the rest of the project. At some point this module will be
+ * renamed "model manager" to better reflect its purpose.
+ * 
  * This module manages buffers for instance data, which comprise a large buffer
  * of uniform data (the "storage buffer") visible to shaders with a storage
  * buffer, and a secondary "instance buffer" which contains indexes into the
@@ -27,6 +32,11 @@
  * guaranteed to be static or globally unique from the perspective of the
  * application. Instance records, storage buffer indices and application
  * code are linked by instance IDs, which are unique and do not change.
+ * 
+ * When a model is registered, a material name may be associated with the mesh.
+ * If present, the name is resolved to a material slot index which is used as
+ * default material for new instances of the model. Materials are a per-
+ * instance property and may be overridden by the application.
  */
 
 import type { InstanceAllocation, InstanceAllocator, InstanceRecord } from "./types"
@@ -87,10 +97,10 @@ export function registerAllocation(capacity: number, allocator: InstanceAllocato
  */
 export function addInstance(
     allocationId: number, 
-    data: ArrayBuffer | null, 
-    device: GPUDevice, 
-    allocator: InstanceAllocator,
-    activate: boolean = true): number {
+    data:         ArrayBuffer | null, 
+    device:       GPUDevice, 
+    allocator:    InstanceAllocator,
+    activate:     boolean = true): number {
 
   if(data !== null && data.byteLength !== INSTANCE_BLOCK_SIZE) {
     throw new Error('Invalid instance data size')
@@ -143,8 +153,8 @@ export function addInstance(
  */
 export function activateInstance(
     instanceId: number,
-    allocator: InstanceAllocator,
-    device: GPUDevice): void {
+    allocator:  InstanceAllocator,
+    device:     GPUDevice): void {
   if(!(instanceId in allocator.instances)) {
     throw new Error('Invalid instance ID')
   }
@@ -168,8 +178,8 @@ export function activateInstance(
 /** Deactivate an instance in the buffer. */
 export function deactivateInstance(
     instanceId: number,
-    allocator: InstanceAllocator,
-    device: GPUDevice): void {
+    allocator:  InstanceAllocator,
+    device:     GPUDevice): void {
   if(!(instanceId in allocator.instances)) {
     throw new Error('Invalid instance ID')
   }
@@ -197,10 +207,10 @@ export function deactivateInstance(
 /** Update an instance in the buffer. */
 export function updateInstanceData(
     instanceData: ArrayBuffer, 
-    instanceId: number, 
-    allocator: InstanceAllocator,
-    device: GPUDevice, 
-    offset: number = 0): void {
+    instanceId:   number, 
+    allocator:    InstanceAllocator,
+    device:       GPUDevice, 
+    offset:       number = 0): void {
   
   if(instanceData.byteLength + offset > INSTANCE_BLOCK_SIZE) {
     throw new Error('Invalid instance data size or offset')

@@ -67,8 +67,9 @@ export function subdividedIcosahedron(n: number): Polyhedron {
 
 /** Create a mesh from a polyhedron. */
 export function polyhedronMesh(
-    p: Polyhedron, 
-    textures: [number, number, number, number],
+    p:         Polyhedron, 
+    textures:  [number, number, number, number],
+    material:  string,
     useLatLon: boolean): XMesh {
 
   // todo: non-radial normals
@@ -108,12 +109,13 @@ export function polyhedronMesh(
     return Vertex(position, uv, normal, tangent, bitangent, textures)
   }))
   return {
-    id: 0,
-    name: 'polyhedron',
+    id:          0,
+    name:        'polyhedron',
     vertexCount: vertices.length,
-    vertices,
-    indexCount: vertices.length,
-    indices: new Array(vertices.length).fill(0).map((_,i) => i),
+    vertices:    vertices,
+    indexCount:  vertices.length,
+    indices:     new Array(vertices.length).fill(0).map((_,i) => i),
+    material:    material,
   }
 }
 

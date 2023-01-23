@@ -45,10 +45,10 @@ export function objToXMesh(objSrc: string): XMesh[] {
 export function parseObjFile(objSrc: string): ObjParseState {
   const state: ObjParseState = {
     vertexPositions: [],
-    vertexNormals: [],
+    vertexNormals:   [],
     vertexTexCoords: [],
-    groups: [],
-    currentGroup: null,
+    groups:          [],
+    currentGroup:    null,
   }
   const lines = objSrc.split(/\r/).map(x => x.trim())
   for (const line of lines) {
@@ -130,12 +130,13 @@ export function objGroupToXMesh(group: ObjGroup, state: ObjParseState): XMesh {
   }
 
   return {
-    id: 0,
-    name: group.name,
+    id:          0,
+    name:        group.name,
     vertexCount: vertices.length,
-    indexCount: indices.length,
-    vertices,
-    indices,
+    indexCount:  indices.length,
+    vertices:    vertices,
+    indices:     indices,
+    material:    'default',
   }
 }
 

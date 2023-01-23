@@ -1,37 +1,48 @@
 import type {GPUContext, Renderable} from './types'
+import { RatiteError } from './error.js'
+
 
 export async function initGPU(canvas: HTMLCanvasElement | OffscreenCanvas): Promise<GPUContext> {
+  if(!navigator.gpu)
+    throw new RatiteError('WebGPUInitFailed', 'navigator.gpu is undefined')
+
   const adapter = await navigator.gpu.requestAdapter({
     powerPreference: 'high-performance',
   })
   if(adapter == null)
-    throw 'webgpu not available'
+    throw new RatiteError('WebGPUInitFailed', 'requestAdapter returned null')
+
+  adapter.requestAdapterInfo().then(adapterInfo => {
+    console.info(`[GPU] Using adapter: ${adapterInfo.description}`)
+  })
+
   const device = await adapter.requestDevice({
     //requiredFeatures: ['shader-f16'],
   })
   if(device == null)
-    throw 'could not get gpu device'
+    throw new RatiteError('WebGPUInitFailed', 'requestDevice returned null')
+
   const context = canvas.getContext('webgpu') as GPUCanvasContext
   const presentationFormat = navigator.gpu.getPreferredCanvasFormat()
   const presentationSize = {width: canvas.width, height: canvas.height}
   context.configure({
-    device,
-    format: presentationFormat,
+    device:     device,
+    format:     presentationFormat,
     alphaMode: 'opaque',
   })
   const msaaTexture: GPUTexture = device.createTexture({
-    size: presentationSize,
-    format: presentationFormat,
-    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+    size:        presentationSize,
+    format:      presentationFormat,
+    usage:       GPUTextureUsage.RENDER_ATTACHMENT,
     sampleCount: 1,
   })
   const msaaView: GPUTextureView = msaaTexture.createView()
   const renderPassDescriptor: GPURenderPassDescriptor = {
     colorAttachments: [{
-      view: msaaView,
+      view:       msaaView,
       clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
-      loadOp: 'clear',
-      storeOp: 'store',
+      loadOp:     'clear',
+      storeOp:    'store',
     }],
   } as GPURenderPassDescriptor
   return {

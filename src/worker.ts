@@ -1,5 +1,5 @@
 import type { InitMessage, InputState, ErrorMessage, Message, WorkerState, FrameStats } from './types'
-import type { Mat4, MatrixDescriptor, Quat } from './ratite/types'
+import type { Mat4, ErrorType, MatrixDescriptor, Quat } from './ratite/types'
 import { initGPU } from './ratite/gpu.js'
 import { createRenderer, renderFrame } from './ratite/render.js'
 import { loadResourceBundle } from './ratite/resource.js'
@@ -7,6 +7,7 @@ import { createScene, getNodeByName, setTransform } from './ratite/scene.js'
 import { createTelescope, defaultTelescopeDescriptor } from './telescope.js'
 import { applyFirstPersonCamera, moveFirstPersonCameraForward, moveFirstPersonCameraRight, moveFirstPersonCameraUpScale, rotateFirstPersonCamera } from './ratite/camera.js'
 import {vec3, mat4, quat, glMatrix} from 'gl-matrix'
+import { RatiteError } from './ratite/error.js'
 glMatrix.setMatrixArrayType(Array)
 
 const MOUSE_SENSITIVITY = 0.001
@@ -38,10 +39,18 @@ let state: WorkerState = {
 
 async function init(opts: InitMessage): Promise<void> {
   if(state.status != 'created')
-    return report('Worker already initialised.')
+    return report(new RatiteError('InvalidOperation', 'Worker already initialised.'))
 
   state.canvas = opts.canvas
-  state.gpu = await initGPU(state.canvas)
+
+  try {
+    state.gpu = await initGPU(state.canvas)
+  } catch(e) {
+    if(e instanceof RatiteError) {
+      return report(e)
+    }
+  }
+  console.debug(state.gpu)
 
   state.renderer = await createRenderer(
     state.gpu.presentationFormat, 
@@ -138,16 +147,18 @@ onmessage = (event: MessageEvent<Message>) => {
       processInput(event.data.data)
       break
     default:
-      report(`Bad event type: ${event.data.type}`)
+      report(new RatiteError('InternalError', `Bad event type: ${event.data.type}`))
   }
 }
 
 /** Report an error to the controlling thread. */
-function report(message: string, correlationId: number = null): void {
+function report(error: RatiteError, correlationId: number = null): void {
   const obj: ErrorMessage = { 
-    id:      nextMessageId++, 
-    type:    'error', 
-    message: message,
+    id:        nextMessageId++, 
+    type:      'error', 
+    errorType: error.type,
+    message:   error.message,
+    error:     error,
   }
   if(correlationId !== null)
     obj.correlationId = correlationId

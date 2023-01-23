@@ -1,6 +1,5 @@
-import type {Vec2, Vec3} from "./types"
+import type {ErrorType, Vec2, Vec3} from "./types"
 const { sin, cos, atan2, sqrt } = Math
-
 
 export function latLonToUnitVec(c: Vec2): Vec3 {
   const [lat,lon] = c

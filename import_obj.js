@@ -11,12 +11,13 @@ async function main() {
 
   const infile = process.argv[2]
   const textures = process.argv[3].split(',').map(x => Number.parseInt(x))
-
+  const material = process.argv[4]
   const objSrc = await fs.readFile(infile, 'utf-8')
   const meshes = objToXMesh(objSrc)
 
   for(let mesh of meshes) {
     mesh = setTextures(textures, mesh)
+    mesh.material = material
     const src = serialiseMeshToJSON(mesh)
     const filename_json = `assets/mesh/imported/${mesh.name}.json`
     console.log(`Imported "${mesh.name}": ${mesh.vertexCount} vertices, ${mesh.indexCount} indices.`) 

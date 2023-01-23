@@ -22,7 +22,7 @@ struct Uniforms {
 
 struct InstanceProperties {
   modelView: mat4x4<f32>,
-  reserved:  vec4<f32>,
+  material:  u32,
 }
 
 struct AtlasRecord {

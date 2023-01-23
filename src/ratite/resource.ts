@@ -1,5 +1,9 @@
-import type {ResourceBundleDescriptor, TextureResourceDescriptor, MeshResourceDescriptor, Atlas, 
-  ResourceBundle, TextureResource, MeshResource, MeshStore, TextureRemapping, PipelineStore, ShaderStore, ShaderResourceDescriptor, PipelineDescriptor, MeshVertex, Renderer} from "./types"
+import type {
+  ResourceBundleDescriptor, TextureResourceDescriptor, MeshResourceDescriptor,
+  Atlas, ResourceBundle, TextureResource, MeshResource, MeshStore,
+  TextureRemapping, ShaderStore, ShaderResourceDescriptor, PipelineDescriptor,
+  MeshVertex, Renderer
+} from "./types"
 import { addSubTexture, copyImageBitmapToSubTexture2, copyImageToSubTexture } from "./atlas.js"
 import {addMesh, getMeshById, serialiseVertices} from "./mesh.js"
 import {createPipeline} from "./pipeline.js"
@@ -75,10 +79,10 @@ export async function loadResourceBundleFromDescriptor(
   const endTime = performance.now()
   console.debug(`Finished loading resources for bundle${descriptor.label ? ` '${descriptor.label}'` : ''} in ${endTime - startTime}ms.`)
   return {
-    label, 
-    meshes: meshResources, 
-    textures: textureResources,
-    scenes: sceneResources,
+    label:     label, 
+    meshes:    meshResources, 
+    textures:  textureResources,
+    scenes:    sceneResources,
     materials: materialResources,
   }
 }
@@ -86,17 +90,19 @@ export async function loadResourceBundleFromDescriptor(
 /** Load a mesh resource. */
 export async function loadMeshResource(
     descriptor: MeshResourceDescriptor, 
-    meshStore: MeshStore,
-    device: GPUDevice): Promise<MeshResource> {
+    meshStore:  MeshStore,
+    device:     GPUDevice): Promise<MeshResource> {
   const {name, vertexCount} = descriptor
   let vertices = descriptor.vertices
   let indices = descriptor.indices
+  let material = descriptor.material
   if(!vertices) {
     const response = await fetch(descriptor.src)
     if (descriptor.srcType === 'json') {
       const json = await response.json()
-      vertices = json.vertices
-      if(!indices) indices = json.indices
+      if(!vertices) vertices = json.vertices
+      if(!indices)  indices  = json.indices
+      if(!material) material = json.material
     } else if (descriptor.srcType === 'bin') {
       const buffer = await response.arrayBuffer()
       throw 'Loading binary mesh files is not implemented'
@@ -113,7 +119,7 @@ export async function loadMeshResource(
     vertices = vertices.map(v => prescaleVertexUV(v, descriptor.prescaleUV))
   const vertexData = serialiseVertices(vertices)
 
-  const meshId = addMesh(name, vertexCount, vertexData, indices, meshStore, device)
+  const meshId = addMesh(name, vertexCount, vertexData, indices, material, meshStore, device)
   const mesh = getMeshById(meshId, meshStore) // todo: remove
   return mesh
 }

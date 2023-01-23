@@ -5,48 +5,59 @@ import type {Atlas, Mat4, ShaderStore} from "./types.js"
 import {UNIFORM_BUFFER_FLOATS, UNIFORM_BUFFER_SIZE, VERTEX_SIZE} from "./constants.js"
 
 
-const bindGroupLayoutDescriptor: GPUBindGroupLayoutDescriptor = {
-  label: 'main-bind-group-layout',
-  entries: [{
-    // General uniforms
-    binding: 0, 
-    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-    buffer: { type: 'uniform' },
-  }, {
-    // Lighting uniforms
-    binding: 1, 
-    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-    buffer: { type: 'uniform' },
-  }, { 
-    // Materials data
-    binding: 2, 
-    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-    buffer: { type: 'read-only-storage' },
-  }, { 
-    // Instance data
-    binding: 3, 
-    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-    buffer: { type: 'read-only-storage' },
-  }, {
-    // Atlas metadata
-    binding: 4, 
-    visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-    buffer: { type: 'read-only-storage' },
-  }, {
-    // Sampler
-    binding: 5, 
-    visibility: GPUShaderStage.FRAGMENT,
-    sampler: { type: 'filtering' },
-  }, {
-    // Atlas texture    
-    binding: 6,
-    visibility: GPUShaderStage.FRAGMENT,
-    texture: { 
-      sampleType: 'float', 
-      viewDimension: '2d-array', 
-      multisampled: false 
-    },
-  }]
+// Really, this should be a build-time constant. But we can't do that because
+// `GPUShaderStage` will be undefined on browsers that don't support WebGPU,
+// which will throw an error as soon the file is imported, and we need to
+// handle that case gracefully.
+let bindGroupLayoutDescriptor: GPUBindGroupLayoutDescriptor = null
+
+export function getBindGroupLayoutDescriptor(): GPUBindGroupLayoutDescriptor {
+  if(bindGroupLayoutDescriptor)
+    return bindGroupLayoutDescriptor
+  bindGroupLayoutDescriptor = {
+    label: 'main-bind-group-layout',
+    entries: [{
+      // General uniforms
+      binding: 0, 
+      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+      buffer: { type: 'uniform' },
+    }, {
+      // Lighting uniforms
+      binding: 1, 
+      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+      buffer: { type: 'uniform' },
+    }, { 
+      // Materials data
+      binding: 2, 
+      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+      buffer: { type: 'read-only-storage' },
+    }, { 
+      // Instance data
+      binding: 3, 
+      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+      buffer: { type: 'read-only-storage' },
+    }, {
+      // Atlas metadata
+      binding: 4, 
+      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+      buffer: { type: 'read-only-storage' },
+    }, {
+      // Sampler
+      binding: 5, 
+      visibility: GPUShaderStage.FRAGMENT,
+      sampler: { type: 'filtering' },
+    }, {
+      // Atlas texture    
+      binding: 6,
+      visibility: GPUShaderStage.FRAGMENT,
+      texture: { 
+        sampleType: 'float', 
+        viewDimension: '2d-array', 
+        multisampled: false 
+      },
+    }]
+  }
+  return bindGroupLayoutDescriptor
 }
 
 /** Initialise the global uniform buffer. */
@@ -82,7 +93,7 @@ export function setProjectionMatrix(projectionMatrix: Mat4, buffer: GPUBuffer, d
 }
 
 export function createMainBindGroupLayout(device: GPUDevice): GPUBindGroupLayout {
-  return device.createBindGroupLayout(bindGroupLayoutDescriptor)
+  return device.createBindGroupLayout(getBindGroupLayoutDescriptor())
 }
 
 export function createBindGroup( 

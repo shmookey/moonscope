@@ -1,6 +1,3 @@
-import {NamedTupleMember} from "typescript";
-
-
 export type Vec2 = [number,number]
 export type Vec3 = [number,number, number]
 export type Vec4 = [number,number, number, number]
@@ -11,6 +8,7 @@ export type Mat4 = [
   number, number, number, number,
 ]
 export type Quat = [number, number, number, number]
+
 
 
 export type MeshVertex = {
@@ -24,12 +22,13 @@ export type MeshVertex = {
 
 /** Extended mesh format. Used for offline storage. */
 export type XMesh = {
-  id:          number,
-  name:        string,
-  vertexCount: number,
-  indexCount:  number,
-  vertices:    MeshVertex[],
-  indices:     number[],
+  id:          number,        // Mesh resource ID
+  name:        string,        // Human-readable name
+  vertexCount: number,        // Number of vertices in mesh
+  indexCount:  number,        // Number of indices in mesh
+  vertices:    MeshVertex[],  // Vertex data
+  indices:     number[],      // Indices into vertex array
+  material:    string,        // Material name
 }
 
 
@@ -58,8 +57,14 @@ export type MeshResource = {
   vertexPointer: number,         // Byte offset location in vertex buffer
   indexPointer:  number,         // Byte offset location in index buffer
   indexOffset:   number,         // Index offset for this mesh
+  material:      string | null,  // Material name, if any
 }
 
+/** Mesh resource descriptor. 
+ * 
+ * Mesh data can be file-referenced or embedded in the descriptor, or both,
+ * with descriptor fields taking precedence.
+ */
 export type MeshResourceDescriptor = {
   id:          number,           // Mesh resource ID
   name:        string,           // Human-readable name
@@ -73,6 +78,7 @@ export type MeshResourceDescriptor = {
   texRemap?:   TextureRemapping, // Texture IDs remapping
   prescale?:   number,           // Scale factor applied to vertex positions
   prescaleUV?: number,           // Scale factor applied to vertex UVs
+  material?:   string,           // Material name
 }
 
 export type TextureRemapping = {
@@ -236,9 +242,9 @@ export type InstanceRecord = {
  * it to whatever buffers need a copy.
  */
 export type Camera = {
-  projection: Mat4,
-  isDirty: boolean, 
-  position: Vec3,
+  projection:  Mat4,
+  isDirty:     boolean, 
+  position:    Vec3,
   orientation: Quat,
 }
 
@@ -250,9 +256,9 @@ export type Camera = {
  */
 export type FirstPersonCamera = {
   position: Vec3,
-  roll: number,
-  pitch: number,
-  yaw: number,
+  roll:     number,
+  pitch:    number,
+  yaw:      number,
 }
 
 
@@ -428,7 +434,7 @@ export type SceneGraphDescriptor = {
 }
 
 export type ViewMetaDescriptor = {
-  name: string,
+  name:       string,
   projection: ViewDescriptor
 }
 
@@ -625,15 +631,15 @@ export type GPUContext = {
 
 // Legacy - to be removed
 export type Renderable = {
-  pipeline: GPURenderPipeline;
-  vertexBuffer: GPUBuffer;
-  vertexCount: number;
-  instanceCount: number;
-  instanceBuffer?: GPUBuffer;
-  uniformBuffer?: GPUBuffer;
+  pipeline:          GPURenderPipeline;
+  vertexBuffer:      GPUBuffer;
+  vertexCount:       number;
+  instanceCount:     number;
+  instanceBuffer?:   GPUBuffer;
+  uniformBuffer?:    GPUBuffer;
   uniformBindGroup?: GPUBindGroup;
-  uniformData?: any;
-  outputTexture?: GPUTexture;
+  uniformData?:      any;
+  outputTexture?:    GPUTexture;
 }
 
 
@@ -743,3 +749,19 @@ export type MaterialState = {
   slots:          Material[],  // List of active materials in slot order
   atlas:          Atlas        // Texture atlas for material textures
 }
+
+
+//
+//    ERRORS
+//
+
+export type ErrorType = 
+    'InternalError'       // Programming error, things that should not happen.
+  | 'InvalidArgument'     // Invalid argument, e.g. out of range.
+  | 'InvalidOperation'    // Invalid operation, e.g. trying to use a destroyed object.
+  | 'NotImplemented'      // Not implemented, e.g. missing feature.
+  | 'NotSupported'        // Not supported, e.g. unsupported feature.
+  | 'OutOfMemory'         // Out of memory.
+  | 'OutOfResources'      // Out of resources, e.g. too many objects.
+  | 'UnknownError'        // All other errors.
+  | 'WebGPUInitFailed'    // Failed to initialise WebGPU.

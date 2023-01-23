@@ -1,7 +1,12 @@
-import type {BaseNode, Camera, CameraNode, DrawCallDescriptor, FirstPersonCamera, GPUContext, LightSourceDescriptor, LightSourceNode, LightSourceNodeDescriptor, Mat4, Model, ModelNode, Node, NodeDescriptor, Quat, Renderer, Scene, SceneGraph, SceneGraphDescriptor, TransformDescriptor, TransformNode, Vec2, Vec3, Vec4, View, ViewDescriptor} from "./types"
+import type {
+  CameraNode, DrawCallDescriptor, GPUContext, LightSourceNode,
+  LightSourceNodeDescriptor, Mat4, Model, ModelNode, Node, NodeDescriptor,
+  Quat, Renderer, Scene, SceneGraph, SceneGraphDescriptor, TransformDescriptor,
+  TransformNode, Vec2, Vec3, Vec4, View, ViewDescriptor
+} from "./types"
 import * as Skybox from './skybox.js'
-import {createCamera, createFirstPersonCamera, getCameraViewMatrix} from './camera.js'
-import { mat4, vec4, quat, glMatrix } from 'gl-matrix'
+import {createCamera, createFirstPersonCamera} from './camera.js'
+import {mat4, quat, glMatrix} from 'gl-matrix'
 import {activateInstance, addInstance, deactivateInstance, registerAllocation, updateInstanceData} from "./instance.js"
 import {getMeshByName} from "./mesh.js"
 import {INSTANCE_BLOCK_SIZE, UNIFORM_BUFFER_OFFSET_PROJECTION, UNIFORM_BUFFER_OFFSET_VIEW} from "./constants.js"
@@ -18,7 +23,7 @@ let sceneGraphCount = 0
 /** Create a scene. */
 export async function createScene(
   uniformBuffer: GPUBuffer,
-  gpu: GPUContext): Promise<Scene> {
+  gpu:           GPUContext): Promise<Scene> {
 
   const skybox = await Skybox.createSkybox(uniformBuffer, gpu)
   const defaultCamera = createCamera(gpu.aspect)
@@ -34,9 +39,9 @@ export async function createScene(
 
 /** Create a scene graph. */
 export function createSceneGraph(
-    renderer: Renderer,
+    renderer:            Renderer,
     lightSourceCapacity: number = 16,
-    label?: string): SceneGraph {
+    label?:              string): SceneGraph {
 
   if(!label)
     label = `scene-graph-${sceneGraphCount++}`

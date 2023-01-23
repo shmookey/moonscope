@@ -1,4 +1,14 @@
-/** mesh.ts - Mesh store implementation for WebGPU. */
+/** Mesh data manager.
+ * 
+ * The mesh store manages two buffers, the vertex buffer and the index buffer.
+ * Unlike most other manager modules in Ratite, the mesh store does not keep a
+ * copy of the data in local memory. 
+ * 
+ * Meshes may have materials associated with them, but this association is not
+ * managed by the mesh store. The mesh store only manages geometry. If a mesh
+ * is loaded with a material name, the name is stored in the MeshResource and
+ * may be used by the application to look up a default material for the mesh.
+ */
 
 import type { MeshResource, MeshResourceDescriptor, MeshStore, MeshVertex, XMesh } from "./types"
 import {VERTEX_SIZE} from "./constants.js"
@@ -13,12 +23,12 @@ export function createMeshStore(
     device:         GPUDevice): MeshStore {
   const vertexBuffer = device.createBuffer({
     label: 'meshstore-vertex',
-    size: vertexCapacity * vertexSize,
+    size:  vertexCapacity * vertexSize,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   })
   const indexBuffer = device.createBuffer({
     label: 'meshstore-index',
-    size: indexCapacity * indexSize,
+    size:  indexCapacity * indexSize,
     usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
   })
   return {
@@ -28,25 +38,26 @@ export function createMeshStore(
     indexSize,
     vertexCapacity,
     indexCapacity,
-    vertexCount: 0,
-    indexCount: 0,
-    meshes: [],
-    nextMeshId: 0,
+    vertexCount:      0,
+    indexCount:       0,
+    meshes:           [],
+    nextMeshId:       0,
     nextVertexOffset: 0,
-    nextIndexOffset: 0,
-    vacancies: [],
-    nextIndex: 0,
+    nextIndexOffset:  0,
+    vacancies:        [],
+    nextIndex:        0,
   }
 }
 
 /** Add a mesh to the store. Returns the mesh ID. */
 export function addMesh(
-    name: string,
+    name:        string,
     vertexCount: number,
-    vertexData: ArrayBuffer,
-    indices: number[],
-    store: MeshStore,
-    device: GPUDevice): number {
+    vertexData:  ArrayBuffer,
+    indices:     number[],
+    material:    string,
+    store:       MeshStore,
+    device:      GPUDevice): number {
 
   if(vertexData.byteLength !== vertexCount * store.vertexSize)
     throw new Error('Invalid mesh data size')
@@ -69,6 +80,7 @@ export function addMesh(
     indexCount,
     indexPointer,
     indexOffset,
+    material,
   }
   store.meshes[meshId] = mesh
   store.nextMeshId++
@@ -181,11 +193,11 @@ export function serialiseMeshToJSON(mesh: XMesh): string {
  */
 export function prepareVertexForJSON(vertex: MeshVertex): any {
   return {
-    position: Array.from(vertex.position),
-    uv: Array.from(vertex.uv),
-    normal: Array.from(vertex.normal),
-    tangent: Array.from(vertex.tangent),
+    position:  Array.from(vertex.position),
+    uv:        Array.from(vertex.uv),
+    normal:    Array.from(vertex.normal),
+    tangent:   Array.from(vertex.tangent),
     bitangent: Array.from(vertex.bitangent),
-    textures: Array.from(vertex.textures),
+    textures:  Array.from(vertex.textures),
   }
 }

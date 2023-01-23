@@ -5,7 +5,7 @@ import * as Render from './ratite/render.js'
 import { createInputState } from './input.js'
 import { getLayerAsImageBitmap } from './ratite/atlas.js'
 import {vec3, mat4, quat} from 'gl-matrix'
-import type {Mat4, Renderer, SceneGraph, ViewDescriptor, Quat, ModelNode, MatrixDescriptor, GPUContext, Renderable, ResourceBundleDescriptor} from './ratite/types.js'
+import type {Mat4, Renderer, SceneGraph, ViewDescriptor, Quat, ModelNode, MatrixDescriptor, GPUContext, Renderable, ResourceBundleDescriptor, ErrorType} from './ratite/types.js'
 import {applyFirstPersonCamera, getCameraViewMatrix, moveFirstPersonCameraForward, moveFirstPersonCameraRight, moveFirstPersonCameraUp, moveFirstPersonCameraUpScale, rotateFirstPersonCamera} from './ratite/camera.js'
 import {celestialBodyModelMatrix, generateUniverse, Universe} from './universe.js'
 import {getMeshByName} from './ratite/mesh.js'
@@ -14,8 +14,9 @@ import {loadResourceBundleFromDescriptor} from './ratite/resource.js'
 import {Antenna, setAntennaAltitude, setAntennaAzimuth} from './antenna.js'
 import Bundle from '../assets/bundle.json'
 import { createTelescope, defaultTelescopeDescriptor } from './telescope.js'
-import type { InfoMessage, InitMessage, Message, ReadyMessage } from './types.js'
+import type { ErrorMessage, InfoMessage, InitMessage, Message, ReadyMessage } from './types.js'
 import { addWorkerEventListener, createWorkerController, initWorker, sendInputToWorker, startWorker, stopWorker } from './controller.js'
+import { RatiteError, explainError, formatErrorType } from './ratite/error.js'
 const { sin, cos, log, sqrt, min, max, random, PI } = Math
 
 const MOUSE_SENSITIVITY = 0.001
@@ -115,11 +116,15 @@ type SkyModelState = {
 
 async function main(): Promise<void> {
   const elems = {
-    canvas: initCanvas(),
-    layerCount: document.querySelector('#layer-count') as HTMLSpanElement,
-    fpsAvg: document.querySelector('#fps-avg').childNodes[0] as Text,
-    fpsMin: document.querySelector('#fps-min').childNodes[0] as Text,
-    fpsMax: document.querySelector('#fps-max').childNodes[0] as Text,
+    canvas:            initCanvas(),
+    layerCount:        document.querySelector('#layer-count') as HTMLSpanElement,
+    fpsAvg:            document.querySelector('#fps-avg').childNodes[0] as Text,
+    fpsMin:            document.querySelector('#fps-min').childNodes[0] as Text,
+    fpsMax:            document.querySelector('#fps-max').childNodes[0] as Text,
+    errorModal:        document.querySelector('#error-modal') as HTMLDivElement,
+    errorModalTitle:   document.querySelector('#error-modal-title') as HTMLDivElement,
+    errorModalMessage: document.querySelector('#error-modal-message') as HTMLDivElement,
+    errorModalDetails: document.querySelector('#error-modal-details-text') as HTMLDivElement,
   }
   //const gpu = await GPU.initGPU(elems.canvas)
   //const renderer = await Render.createRenderer(
@@ -154,13 +159,16 @@ async function main(): Promise<void> {
     console.log('worker ready')
     startWorker(worker)
   }, worker)
+  addWorkerEventListener('error', (ev: ErrorMessage) => {
+    fatalError(ev.errorType, ev.error)
+  }, worker)
+
   const presentationSize = {width: elems.canvas.width, height: elems.canvas.height}
   const offscreen = elems.canvas.transferControlToOffscreen()
   const initMessage: InitMessage = {
     type:                'init',
     id:                  0,
     presentationSize:    presentationSize,
-    presentationFormat:  navigator.gpu.getPreferredCanvasFormat(),
     statsUpdateInterval: 250,
     canvas:              offscreen,
   }
@@ -278,6 +286,15 @@ async function main(): Promise<void> {
   }
   requestAnimationFrame(updateInput)
   
+  function fatalError(errorType: ErrorType, error: Error): void {
+    elems.errorModalTitle.innerText = formatErrorType(errorType)
+    elems.errorModalMessage.innerText = explainError(errorType)
+    elems.errorModalDetails.innerText = error.message
+    elems.errorModal.classList.remove('hidden')
+  }
+
+  //fatalError('Failed to start', 'Moonscope failed to start. Please try again later.')
+
   //let frame: number = 0
   //function renderFrame(currentTime: number): void {
   //  if(inputState.mouseCaptured) {
@@ -373,7 +390,7 @@ async function main(): Promise<void> {
 
 
 function setupInput(): void {
-
+  
 }
 
 

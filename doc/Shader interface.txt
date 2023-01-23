@@ -29,14 +29,25 @@ SLOT  NAME        TYPE       SIZE  DESCRIPTION
 
   Size: 68 bytes
 
+
 Uniforms struct
 
-  TYPE          NAME        DESCRIPTION
-  mat4x4<f32>   view        View matrix
-  mat4x4<f32>   projection  Projection matrix
-  f32           time        Time in milliseconds
+  BYTE  TYPE         NAME        DESCRIPTION
+     0  mat4x4<f32>  view        View matrix
+    64  mat4x4<f32>  projection  Projection matrix
+   128  f32          time        Time in milliseconds
 
-  Size: 1152 bytes
+  Size: 132 bytes / 196 bytes (aligned)
+
+
+InstanceData struct
+
+  BYTE  TYPE         NAME       DESCRIPTION
+     0  mat4x4<f32>  modelView  ModelView matrix
+    64  u32          uint32     Material ID
+
+  Size: 68 bytes / 128 bytes (aligned)
+
 
 LightSource struct
 
