@@ -244,11 +244,13 @@ export function updateMaterial(id: number, state: MaterialState): void {
 
   const offset = material.slot * MATERIAL_RECORD_SIZE
   const array  = new Float32Array(state.bufferData, offset, MATERIAL_RECORD_SIZE/4)
+  const view = new DataView(state.bufferData, offset, MATERIAL_RECORD_SIZE)
   array.set(material.ambient,   MATERIAL_RECORD_OFFSET_AMBIENT/4)
   array.set(material.diffuse,   MATERIAL_RECORD_OFFSET_DIFFUSE/4)
   array.set(material.specular,  MATERIAL_RECORD_OFFSET_SPECULAR/4)
   array.set(material.emissive,  MATERIAL_RECORD_OFFSET_EMISSIVE/4)
-  array.set(material.textures,  MATERIAL_RECORD_OFFSET_TEXTURES/4)
+  for(let i = 0; i < 4; i++)
+    view.setUint32(MATERIAL_RECORD_OFFSET_TEXTURES + i*4, material.textures[i] ?? 0, true)
   array[MATERIAL_RECORD_OFFSET_SHININESS/4] = material.shininess
 
   state.device.queue.writeBuffer(
@@ -260,9 +262,13 @@ export function updateMaterial(id: number, state: MaterialState): void {
   )
 }
 
-/** Update the GPU buffer for all active materials. */
+/** Update the GPU buffer for all active materials.
+ * 
+ * TODO: no allocations here
+ */
 export function updateMaterials(state: MaterialState): void {
   const array = new Float32Array(state.bufferData)
+  const view = new DataView(state.bufferData)
   for (const material of state.materials) {
     if (material.slot === null)
       continue // inactive
@@ -271,7 +277,8 @@ export function updateMaterials(state: MaterialState): void {
     array.set(material.diffuse,   offset + MATERIAL_RECORD_OFFSET_DIFFUSE/4)
     array.set(material.specular,  offset + MATERIAL_RECORD_OFFSET_SPECULAR/4)
     array.set(material.emissive,  offset + MATERIAL_RECORD_OFFSET_EMISSIVE/4)
-    array.set(material.textures,  offset + MATERIAL_RECORD_OFFSET_TEXTURES/4)
+    for(let i = 0; i < 4; i++)
+      view.setUint32(offset + MATERIAL_RECORD_OFFSET_TEXTURES + i*4, material.textures[i] ?? 0, true)
     array[offset + MATERIAL_RECORD_OFFSET_SHININESS/4] = material.shininess
   }
   state.device.queue.writeBuffer(
@@ -283,12 +290,12 @@ export function updateMaterials(state: MaterialState): void {
   )
 }
 
-/** Request the use of a material.
+/** Request the use of a material and returns the material slot index.
  * 
  * If the material is not active, it will be activated if the buffer has room,
  * otherwise an error will be thrown. 
  */
-export function useMaterial(id: number, state: MaterialState): void {
+export function useMaterial(id: number, state: MaterialState): number {
   if(!(id in state.materials))
     throw new Error(`Invalid material ID: ${id}`)
 
@@ -298,14 +305,20 @@ export function useMaterial(id: number, state: MaterialState): void {
     activateMaterial(id, state)
 
   material.usage++
+
+  return material.slot
 }
 
-/** Request the use of a material by name. */
-export function useMaterialByName(name: string, state: MaterialState): void {
+/** Request the use of a material by name and returns the material slot index.
+ * 
+ * If the material is not active, it will be activated if the buffer has room,
+ * otherwise an error will be thrown. 
+ */
+export function useMaterialByName(name: string, state: MaterialState): number {
   const material = state.materials.find(m => m.name === name)
   if (!material)
     throw new Error(`Invalid material name: ${name}`)
-  useMaterial(material.id, state)
+  return useMaterial(material.id, state)
 }
 
 /** Release a material from use.

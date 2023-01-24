@@ -10,12 +10,12 @@ import type { Telescope } from "./telescope"
 
 export type MessageType = 
   // Page to worker:
-    'init' | 'start' | 'stop' | 'input' |
+    'init' | 'start' | 'stop' | 'input' | 'getState' |
   // Worker to page:
-    'ready' | 'info' | 'error' | 'started' | 'stopped'
+    'ready' | 'info' | 'error' | 'started' | 'stopped' | 'response'
 export type Message = 
-    InitMessage | StartMessage | StopMessage | InputMessage |
-    InfoMessage | ErrorMessage | ReadyMessage | StartedMessage | StoppedMessage
+    InitMessage | StartMessage | StopMessage | InputMessage | GetStateMessage |
+    InfoMessage | ErrorMessage | ReadyMessage | StartedMessage | StoppedMessage | ResponseMessage
   
 
 
@@ -55,11 +55,21 @@ export interface InputMessage extends MessageBase {
   data: InputState,
 }
 
+/** Get state from worker. */
+export interface GetStateMessage extends MessageBase {
+  type: 'getState',            // Message type.
+}
 
 /** Message sent from a worker to the page to provide status and performance information. */
 export interface InfoMessage extends MessageBase {
   type:       'info',       // Message type.
   frameStats: FrameStats,   // Frame statistics.
+}
+
+/** Response with data message. */
+export interface ResponseMessage extends MessageBase {
+  type:       'response',   // Message type.
+  data:       any,          // Response data.
 }
 
 /** Message sent from a worker to the page to report an error.
@@ -136,6 +146,7 @@ export type WorkerController = {
   status:    WorkerStatus,
   worker:    Worker,
   listeners: {[type: string]: ((message: Message) => void)[]},
+  nextId:    number, // Next message ID
 }
 
 

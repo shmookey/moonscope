@@ -19,8 +19,21 @@ struct Uniforms {
 }
 
 struct InstanceProperties {
-  modelView: mat4x4<f32>,
-  reserved:  vec4<f32>,
+  modelView:    mat4x4<f32>,
+  materialSlot: u32,
+}
+
+struct Material {
+  ambient:    vec4<f32>,
+  diffuse:    vec4<f32>,
+  specular:   vec4<f32>,
+  emissive:   vec4<f32>,
+  textures:   vec4<u32>,
+  shininess:  f32,
+}
+
+struct MaterialData {
+  data: array<Material>,
 }
 
 struct AtlasRecord {
@@ -56,6 +69,7 @@ struct Lighting {
 
 @group(0) @binding(0) var<uniform> uniforms:     Uniforms;
 @group(0) @binding(1) var<uniform> lighting:     Lighting;
+@group(0) @binding(2) var<storage> materialData: MaterialData;
 @group(0) @binding(3) var<storage> instanceData: InstanceData;
 @group(0) @binding(4) var<storage> atlasData:    AtlasData;
 
@@ -92,18 +106,20 @@ fn main(
   @location(6) instanceSlot:  u32,
 ) -> VertexOutput {
   var output: VertexOutput;
+  let instance       = instanceData.data[instanceSlot];
 
   // Positioning
-  let modelView      = instanceData.data[instanceSlot].modelView;
+  let modelView      = instance.modelView;
   let viewRotation   = extractRotation(modelView);
   let camSpacePos    = modelView * position;
   output.Position    = uniforms.projection  * camSpacePos;
   output.viewPos     = camSpacePos.xyz;
 
   // Texture coordinates
-  let texColour      = atlasData.data[textures.x];
-  let texNormal      = atlasData.data[textures.y];
-  let texSpecular    = atlasData.data[textures.z];
+  let material       = materialData.data[instance.materialSlot];
+  let texColour      = atlasData.data[material.textures[0]];
+  let texNormal      = atlasData.data[material.textures[1]];
+  let texSpecular    = atlasData.data[material.textures[2]];
   output.uv          = uv;
   output.texLayers   = vec3(texColour.layer, texNormal.layer, texSpecular.layer);
   output.texColour   = vec4(texColour.position,   texColour.size);

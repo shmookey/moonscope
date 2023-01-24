@@ -22,8 +22,8 @@ struct Lighting {
 }
 
 struct InstanceProperties {
-  model:    mat4x4<f32>,
-  reserved: vec4<f32>,
+  model:      mat4x4<f32>,
+  materialId: u32,
 }
 
 struct AtlasRecord {

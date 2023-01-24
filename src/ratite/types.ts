@@ -213,6 +213,7 @@ export type InstanceAllocator = {
   vacated:             number[],             // Pointers to vacated storage buffer slots
 }
 
+/** An allocation of instance slots in the instance buffer. */
 export type InstanceAllocation = {
   id:            number,        // Allocation ID
   instanceIndex: number,        // Start index in instance buffer
@@ -223,14 +224,20 @@ export type InstanceAllocation = {
   slotInstances: Uint32Array,   // Instance IDs of instances in this allocation currently active at each slot
 }
 
-/** Instance attributes. */
+/** An instance in an instance allocation. */
 export type InstanceRecord = {
   instanceId:      number,        // Instance ID
   allocationId:    number,        // ID of mesh allocation
   instanceSlot:    number | null, // Position in instance buffer, if active, otherwise null
   storageSlot:     number,        // Uniform index for shaders
+  buffer:          ArrayBuffer,   // Local copy of instance data
 }
 
+/** Instance data shared with shaders. */
+export type InstanceData = {
+  modelView:    Mat4,   // ModelView matrix
+  materialId:   number, // Material ID
+}
 
 //
 //    CAMERA TYPES
@@ -391,10 +398,11 @@ export interface LightSourceNode extends BaseNode {
 
 /** Model node, a type of leaf node. */
 export interface ModelNode extends BaseNode {
-  nodeType:   'model',
-  instanceId: number,
-  modelName:  string,
-  drawCallId: number,
+  nodeType:      'model',
+  instanceId:    number,
+  modelName:     string,
+  drawCallId:    number,
+  _instanceData: InstanceData,  // Temporary storage of instance data fields
 }
 
 /** Transform node. */
@@ -422,8 +430,8 @@ export type View = {
   camera:     CameraNode | null,
 }
 
-
-// Scene graph descriptors
+//
+//    SCENE GRAPH - DESCRIPTORS
 //
 
 export type SceneGraphDescriptor = {

@@ -39,31 +39,34 @@
  * instance property and may be overridden by the application.
  */
 
-import type { InstanceAllocation, InstanceAllocator, InstanceRecord } from "./types"
-import { INSTANCE_INDEX_SIZE, INSTANCE_BLOCK_SIZE } from "./constants.js"
+import type { InstanceAllocation, InstanceAllocator, InstanceData, InstanceRecord } from "./types"
+import { 
+  INSTANCE_INDEX_SIZE, INSTANCE_RECORD_SIZE, INSTANCE_RECORD_OFFSET_MODELVIEW, 
+  INSTANCE_RECORD_OFFSET_MATERIAL 
+} from "./constants.js"
 
 /** Initialise the instance allocator. */
 export function createInstanceAllocator(device: GPUDevice, capacity: number): InstanceAllocator {
   const storageBuffer = device.createBuffer({
-    size: capacity * INSTANCE_BLOCK_SIZE,
+    size:  capacity * INSTANCE_RECORD_SIZE,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   })
   const instanceBuffer = device.createBuffer({
-    size: capacity * INSTANCE_INDEX_SIZE,
+    size:  capacity * INSTANCE_INDEX_SIZE,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   })
   return { 
-    storageBuffer,
-    instanceBuffer,
+    storageBuffer:    storageBuffer,
+    instanceBuffer:   instanceBuffer,
     nextAllocationId: 0, 
-    nextInstanceId: 0,
-    nextStorageSlot: 0,
+    nextInstanceId:   0,
+    nextStorageSlot:  0,
     nextInstanceSlot: 0,
-    capacity, 
-    slotsAllocated: 0,
-    allocations: [],
-    instances: [],
-    vacated: [],
+    capacity:         capacity, 
+    slotsAllocated:   0,
+    allocations:      [],
+    instances:        [],
+    vacated:          [],
   }
 }
 
@@ -97,14 +100,11 @@ export function registerAllocation(capacity: number, allocator: InstanceAllocato
  */
 export function addInstance(
     allocationId: number, 
-    data:         ArrayBuffer | null, 
+    data:         InstanceData, 
     device:       GPUDevice, 
     allocator:    InstanceAllocator,
     activate:     boolean = true): number {
 
-  if(data !== null && data.byteLength !== INSTANCE_BLOCK_SIZE) {
-    throw new Error('Invalid instance data size')
-  }
   if(!(allocationId in allocator.allocations)) {
     throw new Error('Invalid allocation ID')
   }
@@ -114,6 +114,8 @@ export function addInstance(
   }
   
   const instanceId = allocator.nextInstanceId
+  const buffer = new ArrayBuffer(INSTANCE_RECORD_SIZE)
+  serialiseInstanceData(data, buffer)
   
   let storageSlot = null
   if(allocator.vacated.length > 0) {
@@ -124,17 +126,23 @@ export function addInstance(
   }
 
   const instance: InstanceRecord = { 
-    instanceId, 
-    allocationId, 
+    instanceId:   instanceId, 
+    allocationId: allocationId,
     instanceSlot: null, 
-    storageSlot 
+    storageSlot:  storageSlot,
+    buffer:       buffer,
   }
   allocator.instances[instanceId] = instance
 
-  const storagePointer = storageSlot * INSTANCE_BLOCK_SIZE
+  const storagePointer = storageSlot * INSTANCE_RECORD_SIZE
 
-  if(data !== null)
-    device.queue.writeBuffer(allocator.storageBuffer, storagePointer, data)
+  device.queue.writeBuffer(
+    allocator.storageBuffer, 
+    storagePointer, 
+    buffer, 
+    0, 
+    INSTANCE_RECORD_SIZE
+  )
 
   allocation.numInstances++
   allocator.nextInstanceId++
@@ -204,26 +212,53 @@ export function deactivateInstance(
   allocation.numActive--
 }
 
-/** Update an instance in the buffer. */
+/** Update an instance in the GPU buffer. */
 export function updateInstanceData(
-    instanceData: ArrayBuffer, 
     instanceId:   number, 
     allocator:    InstanceAllocator,
-    device:       GPUDevice, 
-    offset:       number = 0): void {
+    device:       GPUDevice,
+    data?:        InstanceData): void {
   
-  if(instanceData.byteLength + offset > INSTANCE_BLOCK_SIZE) {
-    throw new Error('Invalid instance data size or offset')
-  }
   if(!(instanceId in allocator.instances)) {
     throw new Error('Invalid instance ID')
   }
   const instance = allocator.instances[instanceId]
+  if(data)
+    serialiseInstanceData(data, instance.buffer)
   const { storageBuffer } = allocator
   device.queue.writeBuffer(
     storageBuffer, 
-    instance.storageSlot * INSTANCE_BLOCK_SIZE + offset, 
-    instanceData)
+    instance.storageSlot * INSTANCE_RECORD_SIZE, 
+    instance.buffer,
+    0,
+    INSTANCE_RECORD_SIZE
+  )
 
 }
 
+const serialiseInstanceData_buffer = new ArrayBuffer(INSTANCE_RECORD_SIZE)
+
+/** Serialise instance data.
+ * 
+ * This is a helper function for serialising instance data into an ArrayBuffer.
+ * If an output buffer is not provided, a temporary one will be used. Its
+ * contents may be overwritten on the next call.
+ * 
+ * TODO: eliminate allocations
+ * 
+ * @param data   Instance data to serialise.
+ * @param out    Output buffer.
+ * @param offset Offset into the output buffer.
+ * @returns The output buffer.
+ */
+export function serialiseInstanceData(
+    data:   InstanceData, 
+    out:    ArrayBuffer = serialiseInstanceData_buffer,
+    offset: number      = 0): ArrayBuffer {
+
+  const view = new DataView(out, offset + INSTANCE_RECORD_OFFSET_MATERIAL)
+  const arr = new Float32Array(out, offset, INSTANCE_RECORD_SIZE / 4)
+  arr.set(data.modelView)
+  view.setUint32(0, data.materialId, true)
+  return out
+}

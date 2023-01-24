@@ -11,7 +11,9 @@
     {"label": "sand/rough",    "id": 6, "size": [ 1024, 1024 ], "src": "/assets/texture/moon-1/rough.jpg", "wrappable": true}
   ],
   "materials": [
-    {"name": "default", "ambient": [1, 1, 1, 1], "textures": {"colour": "default"}}
+    {"name": "default", "ambient": [1, 1, 1, 1], "textures": {"colour": "default"}},
+    {"name": "dish", "textures": {"colour": "dish/colour", "normal": "dish/normal", "rough": "dish/rough"}},
+    {"name": "ground", "textures": {"colour": "sand/colour", "normal": "sand/normal", "rough": "sand/rough"}}
   ],
   "meshes": [
     {"name": "ground",        "vertexCount":   100, "srcType": "json", "src": "/assets/mesh/generated/ground.json", "prescale": 100, "prescaleUV": 100},

@@ -8,7 +8,7 @@ import { addSubTexture, copyImageBitmapToSubTexture2, copyImageToSubTexture } fr
 import {addMesh, getMeshById, serialiseVertices} from "./mesh.js"
 import {createPipeline} from "./pipeline.js"
 import {createSceneGraphFromDescriptor} from "./scene.js"
-import { createMaterial } from "./material.js"
+import { applyMaterialDescriptor, createMaterial } from "./material.js"
 
 
 /** Load a resource bundle. */
@@ -51,16 +51,21 @@ export async function loadResourceBundleFromDescriptor(
     }))
   })()
 
-  await Promise.all([texturesPromise, meshesPromise, shadersPromise])
-
   // Load materials
   const materialResources = []
+  const materialDescriptorTasks = [] // We'll apply the material descriptors after we're sure the textures are loaded
   if('materials' in descriptor) {
     for(let materialDescriptor of descriptor.materials) {
-      const material = createMaterial(materialStore, materialDescriptor)
+      const material = createMaterial(materialStore)
+      materialDescriptorTasks.push(() => applyMaterialDescriptor(material.id, materialDescriptor, materialStore))
       materialResources.push(material)
     }
   }
+
+  await Promise.all([texturesPromise, meshesPromise, shadersPromise])
+
+  // Run material tasks
+  materialDescriptorTasks.forEach(fn => fn())
 
   // Load pipelines
   for(let pipeline of descriptor.pipelines) {
@@ -102,7 +107,7 @@ export async function loadMeshResource(
       const json = await response.json()
       if(!vertices) vertices = json.vertices
       if(!indices)  indices  = json.indices
-      if(!material) material = json.material
+      if(!material) material = json.material ?? 'default'
     } else if (descriptor.srcType === 'bin') {
       const buffer = await response.arrayBuffer()
       throw 'Loading binary mesh files is not implemented'

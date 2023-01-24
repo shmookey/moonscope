@@ -5,18 +5,21 @@
  * communicating with the worker.
  */
 
-import type { InitMessage, InputState, WorkerController } from "./types"
+import type { InitMessage, InputState, ResponseMessage, WorkerController } from "./types"
 
 /** Create a worker controller. */
 export function createWorkerController(): WorkerController {
   const worker = new Worker(new URL('/build/src/worker.js', import.meta.url), {type: 'module'})
   const status = 'created'
   const listeners = {}
-  const controller: WorkerController = {status, worker, listeners}
+  const controller: WorkerController = {status, worker, listeners, nextId: 0}
   worker.onmessage = createMessageHandler(controller)
   addWorkerEventListener('ready',   () => { controller.status = 'idle' },    controller)
   addWorkerEventListener('started', () => { controller.status = 'running' }, controller)
   addWorkerEventListener('stopped', () => { controller.status = 'idle' },    controller)
+  addWorkerEventListener('response', (ev: ResponseMessage) => {
+    console.info(`Response to message ${ev.correlationId} received with data:`, ev.data)
+  }, controller)
   return controller
 }
 
@@ -27,12 +30,12 @@ export function initWorker(initMessage: InitMessage, controller: WorkerControlle
 
 /** Start the worker thread. */
 export function startWorker(controller: WorkerController): void {
-  controller.worker.postMessage({type: 'start'})
+  controller.worker.postMessage({type: 'start', id: controller.nextId++})
 }
 
 /** Stop the worker thread. */
 export function stopWorker(controller: WorkerController): void {
-  controller.worker.postMessage({type: 'stop'})
+  controller.worker.postMessage({type: 'stop', id: controller.nextId++})
 }
 
 /** Message handler for worker thread. */
@@ -60,4 +63,9 @@ export function addWorkerEventListener(type: string, fn: (message: any) => void,
 /** Send input to the worker thread. */
 export function sendInputToWorker(input: InputState, controller: WorkerController): void {
   controller.worker.postMessage({type: 'input', data: input})
+}
+
+/** Get state from the worker thread. */
+export function getStateFromWorker(controller: WorkerController): void {
+  controller.worker.postMessage({type: 'getState'})
 }

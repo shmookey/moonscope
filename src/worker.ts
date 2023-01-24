@@ -146,6 +146,9 @@ onmessage = (event: MessageEvent<Message>) => {
     case 'input':
       processInput(event.data.data)
       break
+    case 'getState':
+      postMessage({type: 'response', correlationId: event.data.id, data: state.sceneGraph.root})
+      break
     default:
       report(new RatiteError('InternalError', `Bad event type: ${event.data.type}`))
   }
@@ -235,6 +238,7 @@ function aTerribleWayOfUpdatingTheCamera_ReallyBad() {
   tempMatrixTransform.matrix = tempMat4_1
   setTransform(tempMatrixTransform, state.mainCamera)
 }
+
 
 //const adapter = await navigator.gpu.requestAdapter({
 //  powerPreference: 'high-performance',

@@ -18,6 +18,7 @@ async function makeGround() {
   const mesh = setTextures([1,2,6,0], embedMesh(tiledSquareMesh(6, 1)))
   mesh.name = 'ground'
   mesh.id = 0
+  mesh.material = 'ground'
 
   const src = serialiseMeshToJSON(mesh)
   const filename_json = `assets/mesh/generated/ground.json`
@@ -31,15 +32,16 @@ async function makeEarth() {
   const mesh = await makeIcosphere(4)
   mesh.name = 'earth'
   mesh.id = 1
+  mesh.material = 'earth'
   const src = serialiseMeshToJSON(mesh)
   const filename_json = `assets/mesh/generated/earth.json`
   await fs.writeFile(filename_json, src)
   console.log(`Wrote ${filename_json} (${mesh.vertexCount} vertices)`)
 }
 
-async function makeIcosphere(n) {
+async function makeIcosphere(n, material) {
   const p = Polyhedron.subdividedIcosahedron(n)
-  const mesh = Polyhedron.polyhedronMesh(p, [0, 0, 0, 0], true)
+  const mesh = Polyhedron.polyhedronMesh(p, [0, 0, 0, 0], material, true)
   const src = serialiseMeshToJSON(mesh)
   const filename_json = `assets/mesh/generated/icosphere-${n}.json`
   await fs.writeFile(filename_json, src)

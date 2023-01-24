@@ -46,7 +46,7 @@ InstanceData struct
      0  mat4x4<f32>  modelView  ModelView matrix
     64  u32          uint32     Material ID
 
-  Size: 68 bytes / 128 bytes (aligned)
+  Size: 68 bytes / 80 bytes (aligned)
 
 
 LightSource struct

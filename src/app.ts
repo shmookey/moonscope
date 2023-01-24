@@ -14,8 +14,8 @@ import {loadResourceBundleFromDescriptor} from './ratite/resource.js'
 import {Antenna, setAntennaAltitude, setAntennaAzimuth} from './antenna.js'
 import Bundle from '../assets/bundle.json'
 import { createTelescope, defaultTelescopeDescriptor } from './telescope.js'
-import type { ErrorMessage, InfoMessage, InitMessage, Message, ReadyMessage } from './types.js'
-import { addWorkerEventListener, createWorkerController, initWorker, sendInputToWorker, startWorker, stopWorker } from './controller.js'
+import type { ErrorMessage, InfoMessage, InitMessage, Message, ReadyMessage, ResponseMessage } from './types.js'
+import { addWorkerEventListener, createWorkerController, getStateFromWorker, initWorker, sendInputToWorker, startWorker, stopWorker } from './controller.js'
 import { RatiteError, explainError, formatErrorType } from './ratite/error.js'
 const { sin, cos, log, sqrt, min, max, random, PI } = Math
 
@@ -226,7 +226,7 @@ async function main(): Promise<void> {
         //getAtlasAsImage()
         break
       case 'KeyZ':
-        //setAntennaAltitude(PI/2, antennaObject)
+        getStateFromWorker(worker)
         break
       default:
         //console.log(ev.code)
@@ -292,6 +292,7 @@ async function main(): Promise<void> {
     elems.errorModalDetails.innerText = error.message
     elems.errorModal.classList.remove('hidden')
   }
+
 
   //fatalError('Failed to start', 'Moonscope failed to start. Please try again later.')
 

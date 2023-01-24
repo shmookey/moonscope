@@ -7,16 +7,17 @@ import type {
 import * as Skybox from './skybox.js'
 import {createCamera, createFirstPersonCamera} from './camera.js'
 import {mat4, quat, glMatrix} from 'gl-matrix'
-import {activateInstance, addInstance, deactivateInstance, registerAllocation, updateInstanceData} from "./instance.js"
-import {getMeshByName} from "./mesh.js"
-import {INSTANCE_BLOCK_SIZE, UNIFORM_BUFFER_OFFSET_PROJECTION, UNIFORM_BUFFER_OFFSET_VIEW} from "./constants.js"
-import {latLonToUnitVec} from "./common.js"
+import {activateInstance, addInstance, deactivateInstance, registerAllocation, serialiseInstanceData, updateInstanceData} from "./instance.js"
+import {getMeshById, getMeshByName} from "./mesh.js"
+import {INSTANCE_RECORD_SIZE, UNIFORM_BUFFER_OFFSET_PROJECTION, UNIFORM_BUFFER_OFFSET_VIEW} from "./constants.js"
+import {arraySet, latLonToUnitVec} from "./common.js"
 import {createBindGroup, createMainUniformBuffer} from "./pipeline.js"
 import {activateLightSource, applyLightSourceDescriptor, createLightingState, createLightSource, deactivateLightSource} from "./lighting.js"
+import { useMaterialByName } from "./material.js"
 const { PI } = Math
 glMatrix.setMatrixArrayType(Array)
 
-const instanceDataBuffer = new ArrayBuffer(INSTANCE_BLOCK_SIZE)
+const instanceDataBuffer = new ArrayBuffer(INSTANCE_RECORD_SIZE)
 const instanceDataBufferF32 = new Float32Array(instanceDataBuffer)
 let sceneGraphCount = 0
 
@@ -366,27 +367,33 @@ export function createModelNode(
     throw new Error(`Model ${modelName} does not exist.`)
   }
 
-  const { device, instanceAllocator } = sceneGraph.renderer
+  const { device, instanceAllocator, meshStore, materials } = sceneGraph.renderer
   const model = sceneGraph.models[modelName]
-
+  const mesh = getMeshById(model.meshId, meshStore)
+  const materialId = useMaterialByName(mesh.material, materials)
+  const instanceData = {
+    modelView:  mat4.create() as Mat4, 
+    materialId: materialId,
+  }
   const instanceId = addInstance(
-    model.allocationId, 
-    instanceDataBuffer, 
+    model.allocationId,  
+    instanceData,
     device, 
     instanceAllocator,
     false,
   )
   
   const node: ModelNode = {
-    nodeType:   'model',
-    parent:     null,
-    root:       null,
-    transform:  mat4.create() as Mat4,
-    children:   [],
-    instanceId: instanceId,
-    modelName:  modelName,
-    drawCallId: model.drawCallId,
-    visible:    true,
+    nodeType:      'model',
+    parent:        null,
+    root:          null,
+    transform:     mat4.create() as Mat4,
+    children:      [],
+    instanceId:    instanceId,
+    modelName:     modelName,
+    drawCallId:    model.drawCallId,
+    visible:       true,
+    _instanceData: instanceData
   }
   sceneGraph.nodes.push(node)
   return node
@@ -611,10 +618,10 @@ let updateModelViews_tempMat4: Mat4 = mat4.create() as Mat4
 
 /** Internal recursive helper function for updateModelViews. */
 function updateModelViews_(
-    node: Node, 
+    node:             Node, 
     currentTransform: Mat4, 
-    viewMatrix: Mat4,
-    sceneGraph: SceneGraph): void {
+    viewMatrix:       Mat4,
+    sceneGraph:       SceneGraph): void {
 
   if(!node.visible)
     return
@@ -623,14 +630,13 @@ function updateModelViews_(
   
   switch(node.nodeType) {
   case 'model':
-    mat4.multiply(updateModelViews_tempMat4, viewMatrix, currentTransform)
+    mat4.multiply(node._instanceData.modelView, viewMatrix, currentTransform)
     if(updateModelViews_tempMat4.some(x => x > 1000000)) {
-      //console.warn(`WARNING: large numbers detected in modelview matrix. reprojecting...`)
-      updateModelViews_tempMat4 = checkProjection(updateModelViews_tempMat4, sceneGraph.views.default.projection)
+      console.warn(`WARNING: large numbers detected in modelview matrix. reprojecting...`)
+      node._instanceData.modelView = checkProjection(node._instanceData.modelView, sceneGraph.views.default.projection)
     }
-    instanceDataBufferF32.set(updateModelViews_tempMat4)
     const { instanceAllocator, device } = sceneGraph.renderer
-    updateInstanceData(instanceDataBuffer, node.instanceId, instanceAllocator, device)
+    updateInstanceData(node.instanceId, instanceAllocator, device, node._instanceData)
     break
   case 'light':
     if(node.lightSource.slot === null)

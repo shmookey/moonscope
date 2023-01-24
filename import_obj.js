@@ -6,8 +6,8 @@ import { serialiseMeshToJSON } from './build/ratite/mesh.js'
 import { setTextures } from './build/ratite/builder/mesh.js'
 
 async function main() {
-  if(process.argv.length !== 4)
-    abort('usage: objimport <infile> <colour,normal,specular,occlusion>')
+  if(process.argv.length !== 5)
+    abort('usage: objimport <infile> <colour,normal,specular,occlusion> <material_name>')
 
   const infile = process.argv[2]
   const textures = process.argv[3].split(',').map(x => Number.parseInt(x))

@@ -21,3 +21,10 @@ export function unitVecToLatLon(v: Vec3): Vec2 {
 export function numberRange(lo: number, high: number): number[] {
   return Array.from({length: high - lo + 1}, (_, i) => i + lo)
 }
+
+/** Copy a list of elements from one array to another. */
+export function arraySet(dest: any[], src: any[], start: number = 0): void {
+  for(let i = 0; i < src.length; i++) {
+    dest[start + i] = src[i]
+  }
+}
