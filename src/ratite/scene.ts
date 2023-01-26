@@ -126,7 +126,7 @@ export function createNodeFromDescriptor(
     sceneGraph: SceneGraph): Node {
   let node: Node = null
   if(descriptor.type == 'model') {
-    node = createModelNode(descriptor.modelName, sceneGraph) 
+    node = createModelNode(descriptor.modelName, sceneGraph, descriptor.material) 
   } else if(descriptor.type == 'camera') {
     node = createCameraNode(descriptor.view, sceneGraph)
   } else if(descriptor.type == 'transform') {
@@ -360,8 +360,9 @@ export function createSceneView(
 
 /** Create a model node. */
 export function createModelNode(
-  modelName: string,
-  sceneGraph: SceneGraph): ModelNode {
+  modelName:     string,
+  sceneGraph:    SceneGraph,
+  materialName?: string): ModelNode {
 
   if(!(modelName in sceneGraph.models)) {
     throw new Error(`Model ${modelName} does not exist.`)
@@ -370,10 +371,12 @@ export function createModelNode(
   const { device, instanceAllocator, meshStore, materials } = sceneGraph.renderer
   const model = sceneGraph.models[modelName]
   const mesh = getMeshById(model.meshId, meshStore)
-  const materialId = useMaterialByName(mesh.material, materials)
+  if(!materialName) 
+    materialName = mesh.material
+  const materialSlot = useMaterialByName(materialName, materials)
   const instanceData = {
     modelView:  mat4.create() as Mat4, 
-    materialId: materialId,
+    materialId: materialSlot,
   }
   const instanceId = addInstance(
     model.allocationId,  
@@ -393,6 +396,7 @@ export function createModelNode(
     modelName:     modelName,
     drawCallId:    model.drawCallId,
     visible:       true,
+    material:      materialName,
     _instanceData: instanceData
   }
   sceneGraph.nodes.push(node)

@@ -402,6 +402,7 @@ export interface ModelNode extends BaseNode {
   instanceId:    number,
   modelName:     string,
   drawCallId:    number,
+  material:      string | null, // Material override
   _instanceData: InstanceData,  // Temporary storage of instance data fields
 }
 
@@ -511,6 +512,7 @@ export interface LightSourceNodeDescriptor extends BaseNodeDescriptor {
 export interface ModelNodeDescriptor extends BaseNodeDescriptor {
   type:      'model',
   modelName: string,
+  material?: string,
 }
 
 /** Transform node. */

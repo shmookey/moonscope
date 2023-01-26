@@ -59,22 +59,6 @@ struct AtlasData {
 @group(0) @binding(3) var<storage> instanceData: InstanceData;
 @group(0) @binding(4) var<storage> atlasData:    AtlasData;
 
-fn extractRotation(m: mat4x4<f32>) -> mat4x4<f32> {
-  var c0 = m[0];
-  var c1 = m[1];
-  var c2 = m[2];
-  var sx = length(c0);
-  var sy = length(c1);
-  var sz = length(c2);
-  var output = mat4x4<f32>(
-    c0 / sx,
-    c1 / sy,
-    c2 / sz,
-    vec4<f32>(0.0, 0.0, 0.0, 1.0)
-  );
-  return output;
-}
-
 @vertex
 fn main(
   @location(0) position:     vec4<f32>,
@@ -90,10 +74,9 @@ fn main(
 
   // Positioning
   let modelView    = instance.modelView;
-  let viewRotation = extractRotation(modelView);
   let camSpacePos  = modelView * position;
-  output.Position     = uniforms.projection  * camSpacePos;
-  output.viewPos      = camSpacePos.xyz;
+  output.Position  = uniforms.projection  * camSpacePos;
+  output.viewPos   = camSpacePos.xyz;
 
   // Material
   let material        = materialData.data[instance.materialSlot];
@@ -115,9 +98,9 @@ fn main(
   }
 
   // Lighting
-  output.normal     = normalize((modelView * vec4(normal, 0)).xyz);
-  output.tangent    = (viewRotation * vec4(normalize(tangent),   1.0)).xyz;
-  output.bitangent  = (viewRotation * vec4(normalize(bitangent), 1.0)).xyz; 
+  output.normal    = normalize((modelView * vec4(normal,    0)).xyz);
+  output.tangent   = normalize((modelView * vec4(tangent,   0)).xyz);
+  output.bitangent = normalize((modelView * vec4(bitangent, 0)).xyz); 
   
   return output;
 }

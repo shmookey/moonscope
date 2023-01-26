@@ -100,9 +100,10 @@ fn main(
   }
 
   // Lighting
-  var ambient = vec3<f32>(0);
-  var diffuse = vec3<f32>(0);
+  var ambient  = vec3<f32>(0);
+  var diffuse  = vec3<f32>(0);
   var specular = vec3<f32>(0);
+  var emissive = material.emissive.rgb;
   for (var i:u32 = 0; i < lighting.count; i = i+1) {
     let light     = lighting.data[i];
     let path      = light.position.xyz - position;
@@ -124,8 +125,8 @@ fn main(
     }
   }
 
-  let colour = ambient + diffuse + specular;
-  var alpha: f32 = materialDiffuse.a;
+  let colour = ambient + diffuse + specular + emissive;
+  var alpha: f32 = max(materialDiffuse.a, material.emissive.a);
   return vec4(pow(colour, vec3(1/2.2)), alpha);
 }
 

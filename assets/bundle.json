@@ -22,6 +22,15 @@
       "shininess": 32,
       "textures": {
       }
+    },{
+      "name": "light-cube", 
+      "ambient":  [0, 0, 0, 0],
+      "diffuse":  [0, 0, 0, 0],
+      "specular": [0, 0, 0, 0],
+      "emissive": [1, 1, 0, 1],
+      "shininess": 1,
+      "textures": {
+      }
     }
   ],
   "meshes": [
@@ -72,6 +81,7 @@
               { "name": "camera-fps", "type": "camera", "view": "default" }]},
           { "name": "floor", "type": "model", "modelName": "floor:sand" },
           { "name": "test-cube", "type": "model", "modelName": "cube", "transform": {"type": "trs", "translation": [2, 2, -4]} },
+          { "name": "light-cube", "type": "model", "modelName": "cube", "material": "light-cube", "transform": {"type": "trs", "translation": [-15, 5, -35]} },
           { "name": "beam", "type": "model", "visible": false, "modelName": "beam", "transform": {"type": "trs", "scale": [0.25, 3, 0.25], "translation": [0  , 3,  -5]} },
           { "name": "telescope", "type": "transform" },
           { "name": "antenna", "type": "transform", 
