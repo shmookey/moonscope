@@ -90,10 +90,10 @@ export function createMaterial(state: MaterialState, descriptor?: MaterialDescri
     id:        state.nextMaterialID++,
     name:      descriptor?.name,
     slot:      null,
-    ambient:   [0, 0, 0, 1],
+    ambient:   [0, 0, 0, 0],
     diffuse:   [1, 1, 1, 1],
     specular:  [1, 1, 1, 1],
-    emissive:  [0, 0, 0, 1],
+    emissive:  [0, 0, 0, 0],
     shininess: 0,
     textures:  [null, null, null, null],
     usage:     0
@@ -117,7 +117,7 @@ export function applyMaterialDescriptor(id: number, descriptor: MaterialDescript
   material.specular  = descriptor.specular  ?? material.specular
   material.emissive  = descriptor.emissive  ?? material.emissive
   material.shininess = descriptor.shininess ?? material.shininess
-  if(material.textures)
+  if(descriptor.textures)
     applyTexturesDescriptor(id, descriptor.textures, state)
 }
 

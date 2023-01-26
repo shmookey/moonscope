@@ -5,14 +5,16 @@
  */
 
 struct VertexOutput {
-  @builtin(position) Position:   vec4<f32>, // position in screen space
-  @location(0)       viewPos:    vec3<f32>, // position in view space
-  @location(1)       uvColour:   vec3<f32>, // position and layer of colour texture
-  @location(2)       uvNormal:   vec3<f32>, // position and layer of normal texture
-  @location(3)       uvSpecular: vec3<f32>, // position and layer of specular texture
-  @location(4)       normal:     vec3<f32>, // normal vector
-  @location(5)       tangent:    vec3<f32>, // tangent vector
-  @location(6)       bitangent:  vec3<f32>, // bitangent vector
+  @builtin(position)               Position:     vec4<f32>, // position in screen space
+  @location(0)                     viewPos:      vec3<f32>, // position in view space
+  @location(1)                     uvDiffuse:    vec3<f32>, // position and layer of diffuse texture
+  @location(2)                     uvNormal:     vec3<f32>, // position and layer of normal texture
+  @location(3)                     uvSpecular:   vec3<f32>, // position and layer of specular texture
+  @location(4)                     normal:       vec3<f32>, // normal vector
+  @location(5)                     tangent:      vec3<f32>, // tangent vector
+  @location(6)                     bitangent:    vec3<f32>, // bitangent vector
+  @location(7) @interpolate(flat)  materialSlot: u32,       // material slot
+  @location(8)                     uv:           vec2<f32>, // uv coordinate (for calculating gradients)
 }
 
 struct Uniforms {
@@ -34,8 +36,8 @@ struct MaterialData {
 }
 
 struct InstanceProperties {
-  modelView: mat4x4<f32>,
-  material:  u32,
+  modelView:    mat4x4<f32>,
+  materialSlot: u32,
 }
 
 struct AtlasRecord {
@@ -84,26 +86,36 @@ fn main(
   @location(6) instanceSlot: u32,
 ) -> VertexOutput {
   var output: VertexOutput;
-  let instance      = instanceData.data[instanceSlot];
+  let instance = instanceData.data[instanceSlot];
 
   // Positioning
-  let modelView     = instance.modelView;
-  let viewRotation  = extractRotation(modelView);
-  let camSpacePos   = modelView * position;
-  output.Position   = uniforms.projection  * camSpacePos;
-  output.viewPos    = camSpacePos.xyz;
+  let modelView    = instance.modelView;
+  let viewRotation = extractRotation(modelView);
+  let camSpacePos  = modelView * position;
+  output.Position     = uniforms.projection  * camSpacePos;
+  output.viewPos      = camSpacePos.xyz;
 
-  // Texture coordinates
-  let material      = materialData.data[instance.material];
-  let texColour     = atlasData.data[material.textures[0]];
-  let texNormal     = atlasData.data[material.textures[1]];
-  let texSpecular   = atlasData.data[material.textures[2]];
-  output.uvColour   = vec3(uv * texColour.size   + texColour.position,   f32(texColour.layer));
-  output.uvNormal   = vec3(uv * texNormal.size   + texNormal.position,   f32(texNormal.layer));
-  output.uvSpecular = vec3(uv * texSpecular.size + texSpecular.position, f32(texSpecular.layer));
+  // Material
+  let material        = materialData.data[instance.materialSlot];
+  output.materialSlot = instance.materialSlot;
+  output.uvDiffuse.z  = -1;
+  output.uvNormal.z   = -1;
+  output.uvSpecular.z = -1;
+  if(material.textures[0] != 0) { 
+    let uvDiffuse    = atlasData.data[material.textures[0]]; 
+    output.uvDiffuse = vec3(uv * uvDiffuse.size + uvDiffuse.position, f32(uvDiffuse.layer));
+  }
+  if(material.textures[1] != 0) { 
+    let uvNormal    = atlasData.data[material.textures[1]]; 
+    output.uvNormal = vec3(uv * uvNormal.size + uvNormal.position, f32(uvNormal.layer));
+  }
+  if(material.textures[2] != 0) {
+    let uvSpecular    = atlasData.data[material.textures[2]]; 
+    output.uvSpecular = vec3(uv * uvSpecular.size + uvSpecular.position, f32(uvSpecular.layer));
+  }
 
   // Lighting
-  output.normal     = (viewRotation * vec4(normalize(normal),    1.0)).xyz;
+  output.normal     = normalize((modelView * vec4(normal, 0)).xyz);
   output.tangent    = (viewRotation * vec4(normalize(tangent),   1.0)).xyz;
   output.bitangent  = (viewRotation * vec4(normalize(bitangent), 1.0)).xyz; 
   
