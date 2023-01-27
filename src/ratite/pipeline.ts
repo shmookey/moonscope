@@ -190,10 +190,10 @@ export function createPipeline(
       entryPoint: 'main',
       targets: [{
         format: presentationFormat,
-        blend: {
+        /*blend: {
           color: { operation: 'add', srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
           alpha: { operation: 'add', srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
-        }
+        }*/
       }]
     },
     primitive: {

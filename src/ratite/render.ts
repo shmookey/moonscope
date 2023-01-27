@@ -108,10 +108,10 @@ export function renderView(
   const commandEncoder = gpu.device.createCommandEncoder()
   const passEncoder = commandEncoder.beginRenderPass(pass)
   
-  passEncoder.setPipeline(scene.skybox.pipeline)
-  passEncoder.setVertexBuffer(0, scene.skybox.vertexBuffer)
-  passEncoder.setBindGroup(0, scene.skybox.uniformBindGroup)
-  passEncoder.draw(scene.skybox.vertexCount, 1, 0, 0)
+  //passEncoder.setPipeline(scene.skybox.pipeline)
+  //passEncoder.setVertexBuffer(0, scene.skybox.vertexBuffer)
+  //passEncoder.setBindGroup(0, scene.skybox.uniformBindGroup)
+  //passEncoder.draw(scene.skybox.vertexCount, 1, 0, 0)
 
   for(let call of sceneGraph.drawCalls) {
     if(call.instanceCount === 0)

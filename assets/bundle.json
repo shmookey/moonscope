@@ -13,9 +13,15 @@
   "materials": [
     {"name": "default", "textures": {"colour": "default"}},
     {"name": "dish",    "textures": {"colour": "dish/colour", "normal": "dish/normal", "rough": "dish/rough"}, "ambient": [0.005,0.005,0.005,1]},
-    {"name": "ground",  "textures": {"colour": "sand/colour", "normal": "sand/normal"}, "ambient": [0,0,0,0]},
     {
-      "name": "cube", 
+      "name":     "ground",  
+      "ambient":  [1,   1,   1,   0],
+      "diffuse":  [0.5, 0.5, 0,   1],
+      "specular": [0.3, 0.3, 0.3, 0],
+      "shininess": 16,
+      "textures": {"colour": "sand/colour", "normal": "sand/normal", "rough": "sand/rough"}
+    },{
+      "name":     "cube", 
       "ambient":  [0.1, 0,   0,   1],
       "diffuse":  [0.5, 0,   0,   1],
       "specular": [0.3, 0.3, 0.3, 1],
@@ -23,7 +29,7 @@
       "textures": {
       }
     },{
-      "name": "light-cube", 
+      "name":     "light-cube", 
       "ambient":  [0, 0, 0, 0],
       "diffuse":  [0, 0, 0, 0],
       "specular": [0, 0, 0, 0],
@@ -97,7 +103,7 @@
             ]
           },
           { "name": "point-light-1", "type": "transform",
-            "transform": {"type": "trs", "translation": [0 , 5, 1] },
+            "transform": {"type": "trs", "translation": [0, 5, 1] },
             "children": [
               { "type": "model", "modelName": "point-light", "transform": {"type": "trs", "scale": [0.1, 0.1, 0.1]} },
               { "type": "light", "lightType": "point", "attenuation": [1, 0, 0.1, 0], "ambient": [0.2, 0.2, 0.2, 1], "diffuse": [0.5, 0.5, 0.5, 1], "specular": [1, 1, 1, 1] }

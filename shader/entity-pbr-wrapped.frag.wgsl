@@ -127,35 +127,88 @@ fn modw(a: f32, b: f32) -> f32 {
 
 @fragment
 fn main(
-  @location(0)                     position:     vec3<f32>,
-  @location(1)                     uv:           vec2<f32>,
-  @location(2)  @interpolate(flat) texLayers:    vec3<i32>,
-  @location(3)                     texColour:    vec4<f32>,
-  @location(4)                     texNormal:    vec4<f32>,
-  @location(5)                     texSpecular:  vec4<f32>,
-  @location(6)                     normal:       vec3<f32>,
-  @location(7)                     tangent:      vec3<f32>,
-  @location(8)                     bitangent:    vec3<f32>,
-  @location(9)                     lightLevel:   vec4<f32>,
-  @location(10)                    lightDir:     vec3<f32>,
-  @location(11) @interpolate(flat) materialSlot: u32,
+  @location(0)                     position:      vec3<f32>,
+  @location(1)                     uvPlusSize:    vec4<f32>,
+  @location(2)                     texDiffNorm:   vec4<f32>,
+  @location(3)                     texSpecEmit:   vec4<f32>,
+  @location(4)  @interpolate(flat) texLayers:     vec4<i32>,
+  @location(5)                     surfaceNormal: vec3<f32>,
+  @location(6)                     tangent:       vec3<f32>,
+  @location(7)                     bitangent:     vec3<f32>,
+  @location(8)                     precalcLightLevel:    vec4<f32>,
+  @location(9)                     precalcLightDir:      vec3<f32>,
+  @location(10) @interpolate(flat) materialSlot:  u32,
 ) -> @location(0) vec4<f32> {
-  let uvWrapped         = vec2(modw(uv.x, 1), modw(uv.y, 1));
-  let uvColourWrapped   = uvWrapped*texColour.zw   + texColour.xy;
-  let uvNormalWrapped   = uvWrapped*texNormal.zw   + texNormal.xy;
-  let uvSpecularWrapped = uvWrapped*texSpecular.zw + texSpecular.xy;
-  let uvBase            = uv*texColour.zw;
-  let ddx               = dpdx(uvBase.xy);
-  let ddy               = dpdy(uvBase.xy);
 
-  var texelColour   = vec4<f32>(0);
-  var texelNormal   = vec4<f32>(0);
-  var texelSpecular = vec2<f32>(0);
-  if(texLayers.x >= 0) { texelColour   = textureSampleGrad(atlas, mySampler, uvColourWrapped,   texLayers.x, ddx, ddy);             }
-  if(texLayers.y >= 0) { texelNormal   = vec4(textureSampleGrad(atlas, mySampler, uvNormalWrapped,   texLayers.y, ddx, ddy).rgb * 2 - 1, 1); }
-  if(texLayers.z >= 0) { texelSpecular = vec2(1 - textureSampleGrad(atlas, mySampler, uvSpecularWrapped, texLayers.z, ddx, ddy).r, 1);       }
+  // Geometry
+  var normal  = normalize(surfaceNormal);
+  let viewDir = normalize(-position);
+ 
+  // Material properties
+  let material        = materialData.data[materialSlot];
+  var materialDiffuse = material.diffuse;
+  var shininess       = material.shininess;
 
-  let light = getLighting(position, normal, tangent, bitangent, texelNormal, texelSpecular, lightLevel, lightDir, materialSlot);
-  return vec4(pow(texelColour.rgb * light, vec3(1/2.2)), texelColour.a); 
+  // Texture mappings
+  let uv         = uvPlusSize.xy;
+  let texSize    = uvPlusSize.zw;
+  let uvWrap     = texSize * vec2(modw(uv.x, 1), modw(uv.y, 1));
+  let uvNoWrap   = uv*texSize;
+  let ddx        = dpdx(uvNoWrap.xy);
+  let ddy        = dpdy(uvNoWrap.xy);
+  let uvDiffuse  = uvWrap + texDiffNorm.xy;
+  let uvNormal   = uvWrap + texDiffNorm.zw;
+  let uvSpecular = uvWrap + texSpecEmit.xy;
+  let uvEmissive = uvWrap + texSpecEmit.zw;
+
+  if(texLayers.x >= 0) { 
+    materialDiffuse = textureSampleGrad(atlas, mySampler, uvDiffuse, texLayers.x, ddx, ddy);
+  }
+  if(texLayers.y >= 0) {
+    let textureNormal = textureSampleGrad(atlas, mySampler, uvNormal, texLayers.y, ddx, ddy).rgb * 2 - 1;
+    let tbn = mat3x3<f32>(tangent, bitangent, normal);
+    normal = normalize(tbn * textureNormal);
+  }
+  if(texLayers.z >= 0 && material.specular.a > 0) {
+    shininess = 1 - textureSampleGrad(atlas, mySampler, uvSpecular, texLayers.z, ddx, ddy).r; 
+  }
+
+  // Lighting
+  var ambient  = vec3<f32>(0);
+  var diffuse  = vec3<f32>(0);
+  var specular = vec3<f32>(0);
+  var emissive = material.emissive.rgb;
+  let precalcLightCount: u32 = 1; // todo: support more
+  for (var i:u32 = 0; i < lighting.count; i = i+1) {
+    let light      = lighting.data[i];
+    var lightLevel = 0.0;
+    var lightDir   = vec3<f32>(0);
+    if(i < precalcLightCount) {
+      lightDir   = precalcLightDir;
+      lightLevel = precalcLightLevel[i];
+    } else {
+      let path   = light.position.xyz - position;
+      let dist   = length(path);
+      lightDir   = normalize(path);
+      lightLevel = attenuate(dist, light.attenuation);
+    }
+    
+    if(material.ambient.a > 0 && light.ambient.a > 0) {
+      ambient += light.ambient.rgb * material.ambient.rgb * materialDiffuse.rgb * lightLevel;
+    }
+    if(material.diffuse.a > 0 && materialDiffuse.a > 0 && light.diffuse.a > 0) {
+      let diff = max(dot(lightDir, normal), 0);
+      diffuse += light.diffuse.rgb * materialDiffuse.rgb * diff * lightLevel;
+    }
+    if(material.specular.a > 0 && light.specular.a > 0 && shininess > 0) {
+      let halfway = normalize(lightDir + viewDir);
+      let spec = pow(max(dot(normal, halfway), 0), shininess);
+      specular += light.specular.rgb * material.specular.rgb * spec * lightLevel;
+    }
+  }
+
+  let colour = ambient + diffuse + specular + emissive;
+  var alpha: f32 = max(materialDiffuse.a, material.emissive.a);
+  return vec4(pow(colour, vec3(1/2.2)), alpha);
 }
 

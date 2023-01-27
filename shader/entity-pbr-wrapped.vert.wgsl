@@ -1,17 +1,16 @@
 struct VertexOutput {
-  @builtin(position)               Position:     vec4<f32>,  // position in screen space
-  @location(0)                     viewPos:      vec3<f32>,  // position in view space
-  @location(1)                     uv:           vec2<f32>,  // position in texture
-  @location(2)  @interpolate(flat) texLayers:    vec3<i32>,  // texture layers (colour, normal, specular)
-  @location(3)                     texColour:    vec4<f32>,  // position and size of colour texture
-  @location(4)                     texNormal:    vec4<f32>,  // position and size of normal texture
-  @location(5)                     texSpecular:  vec4<f32>,  // position and size of specular texture
-  @location(6)                     normal:       vec3<f32>,  // normal vector
-  @location(7)                     tangent:      vec3<f32>,  // tangent vector
-  @location(8)                     bitangent:    vec3<f32>,  // bitangent vector
-  @location(9)                     lightLevel:   vec4<f32>,  // attenuation for first 4 lights
-  @location(10)                    lightDir:     vec3<f32>,  // direction to first light
-  @location(11) @interpolate(flat) materialSlot: u32,        // material slot
+  @builtin(position)               Position:      vec4<f32>,  // position in screen space
+  @location(0)                     viewPos:       vec3<f32>,  // position in view space
+  @location(1)                     uvPlusSize:    vec4<f32>,  // uv + size of textures
+  @location(2)                     texDiffNorm:   vec4<f32>,  // location of diffuse and normal textures
+  @location(3)                     texSpecEmit:   vec4<f32>,  // location of specular and emissive textures
+  @location(4)  @interpolate(flat) texLayers:     vec4<i32>,  // texture layers (colour, normal, specular)
+  @location(5)                     surfaceNormal: vec3<f32>,  // normal vector
+  @location(6)                     tangent:       vec3<f32>,  // tangent vector
+  @location(7)                     bitangent:     vec3<f32>,  // bitangent vector
+  @location(8)                     lightLevel:    vec4<f32>,  // attenuation for first 4 lights
+  @location(9)                     lightDir:      vec3<f32>,  // direction to first light
+  @location(10) @interpolate(flat) materialSlot:  u32,        // material slot
 }
 
 struct Uniforms {
@@ -74,22 +73,6 @@ struct Lighting {
 @group(0) @binding(3) var<storage> instanceData: InstanceData;
 @group(0) @binding(4) var<storage> atlasData:    AtlasData;
 
-fn extractRotation(m: mat4x4<f32>) -> mat4x4<f32> {
-  var c0 = m[0];
-  var c1 = m[1];
-  var c2 = m[2];
-  var sx = length(c0);
-  var sy = length(c1);
-  var sz = length(c2);
-  var output = mat4x4<f32>(
-    c0 / sx,
-    c1 / sy,
-    c2 / sz,
-    vec4<f32>(0.0, 0.0, 0.0, 1.0)
-  );
-  return output;
-}
-
 fn attenuate(dist: f32, attenuation: vec4<f32>) -> f32 {
   return 1.0 / (attenuation.x + 
                (attenuation.y * dist) + 
@@ -111,44 +94,56 @@ fn main(
 
   // Positioning
   let modelView       = instance.modelView;
-  let viewRotation    = extractRotation(modelView);
   let camSpacePos     = modelView * position;
   output.Position     = uniforms.projection  * camSpacePos;
   output.viewPos      = camSpacePos.xyz;
   output.materialSlot = instance.materialSlot;
 
   // Texture coordinates
-  let material = materialData.data[instance.materialSlot];
-  output.uv    = uv;
+  let material        = materialData.data[instance.materialSlot];
+  output.uvPlusSize.x = uv.x;
+  output.uvPlusSize.y = uv.y;
+  output.texLayers    = vec4(-1);
   if(material.textures[0] != 0) { 
-    let texColour      = atlasData.data[material.textures[0]]; 
-    output.texColour   = vec4(texColour.position, texColour.size);
-    output.texLayers.x = texColour.layer;
-  } else {
-    output.texLayers.x = -1;
+    let texDiffuse        = atlasData.data[material.textures[0]]; 
+    output.texDiffNorm.x  = texDiffuse.position.x;
+    output.texDiffNorm.y  = texDiffuse.position.y;
+    output.texLayers.x    = texDiffuse.layer;
+    output.uvPlusSize.z   = texDiffuse.size.x;
+    output.uvPlusSize.w   = texDiffuse.size.y;
   }
   if(material.textures[1] != 0) { 
-    let texNormal      = atlasData.data[material.textures[1]];
-    output.texNormal   = vec4(texNormal.position, texNormal.size);
-    output.texLayers.y = texNormal.layer;
-  } else {
-    output.texLayers.y = -1;
+    let texNormal         = atlasData.data[material.textures[1]];
+    output.texDiffNorm.z  = texNormal.position.x;
+    output.texDiffNorm.w  = texNormal.position.y;
+    output.texLayers.y    = texNormal.layer;
+    output.uvPlusSize.z   = texNormal.size.x;
+    output.uvPlusSize.w   = texNormal.size.y;
   }
   if(material.textures[2] != 0) {
-    let texSpecular    = atlasData.data[material.textures[2]];
-    output.texSpecular = vec4(texSpecular.position, texSpecular.size);
-    output.texLayers.z = texSpecular.layer;
-  } else {
-    output.texLayers.z = -1;
+    let texSpecular       = atlasData.data[material.textures[2]];
+    output.texSpecEmit.x  = texSpecular.position.x;
+    output.texSpecEmit.y  = texSpecular.position.y;
+    output.texLayers.z    = texSpecular.layer;
+    output.uvPlusSize.z   = texSpecular.size.x;
+    output.uvPlusSize.w   = texSpecular.size.y;
+  }
+  if(material.textures[3] != 0) {
+    let texEmissive       = atlasData.data[material.textures[3]];
+    output.texSpecEmit.z  = texEmissive.position.x;
+    output.texSpecEmit.w  = texEmissive.position.y;
+    output.texLayers.w    = texEmissive.layer;
+    output.uvPlusSize.z   = texEmissive.size.x;
+    output.uvPlusSize.w   = texEmissive.size.y;
   }
 
   // Lighting
-  let precalculatedLightCount = min(lighting.count, 4);
-  output.normal      = (viewRotation * vec4(normalize(normal),    1.0)).xyz;
-  output.tangent     = (viewRotation * vec4(normalize(tangent),   1.0)).xyz;
-  output.bitangent   = (viewRotation * vec4(normalize(bitangent), 1.0)).xyz; 
-  output.lightLevel  = vec4<f32>(0);
-  for(var i:u32 = 0; i<precalculatedLightCount; i = i + 1) {
+  let precalcLightCount = min(lighting.count, 1);
+  output.surfaceNormal  = (modelView * vec4(normal,    0)).xyz;
+  output.tangent        = (modelView * vec4(tangent,   0)).xyz;
+  output.bitangent      = (modelView * vec4(bitangent, 0)).xyz; 
+  output.lightLevel     = vec4<f32>(0);
+  for(var i:u32 = 0; i<precalcLightCount; i = i + 1) {
     let light = lighting.data[i];
     let path  = light.position.xyz - camSpacePos.xyz;
     let dist  = length(path);
