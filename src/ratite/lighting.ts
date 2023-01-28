@@ -31,7 +31,7 @@ export function createLightingState(bufferCapacity: number, device: GPUDevice): 
   const byteLength = bufferCapacity * LIGHT_RECORD_SIZE + LIGHT_BUFFER_OFFSET_RECORDS // 4 bytes for light source count
   const buffer = device.createBuffer({
     size: byteLength,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   })
   const bufferData = new ArrayBuffer(byteLength)
   return {

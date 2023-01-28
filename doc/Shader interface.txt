@@ -53,13 +53,13 @@ LightSource struct
 
   BYTE  TYPE       NAME         DESCRIPTION
      0  uint32     type         Type
-     4  vec4<f32>  position     Position, view space (xyzw)
-    20  vec4<f32>  direction    Direction, view space (xyzw)
-    36  vec4<f32>  attenuation  Attenuation (constant, linear, quadratic, spare)
-    52  vec4<f32>  ambient      Ambient colour (rgb + spare)
-    68  vec4<f32>  diffuse      Diffuse colour (rgb + spare)
-    84  vec4<f32>  specular     Specular colour (rgb + spare)
-   100  vec2<f32>  cone         Cone angle (inner, outer)
+    16  vec4<f32>  position     Position, view space (xyzw)
+    32  vec4<f32>  direction    Direction, view space (xyzw)
+    48  vec4<f32>  attenuation  Attenuation (constant, linear, quadratic, spare)
+    64  vec4<f32>  ambient      Ambient colour (rgb + spare)
+    80  vec4<f32>  diffuse      Diffuse colour (rgb + spare)
+    96  vec4<f32>  specular     Specular colour (rgb + spare)
+   112  vec2<f32>  cone         Cone angle (inner, outer)
 
   Size: 108 bytes
 

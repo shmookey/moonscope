@@ -6,7 +6,7 @@ import type {
 } from "./types"
 import * as Skybox from './skybox.js'
 import {createCamera, createFirstPersonCamera} from './camera.js'
-import {mat4, quat, glMatrix} from 'gl-matrix'
+import {mat4, quat, glMatrix, vec4} from 'gl-matrix'
 import {activateInstance, addInstance, deactivateInstance, registerAllocation, serialiseInstanceData, updateInstanceData} from "./instance.js"
 import {getMeshById, getMeshByName} from "./mesh.js"
 import {INSTANCE_RECORD_SIZE, UNIFORM_BUFFER_OFFSET_PROJECTION, UNIFORM_BUFFER_OFFSET_VIEW} from "./constants.js"
@@ -647,6 +647,7 @@ function updateModelViews_(
       break // do nothing if the light somehow isn't active
 
     mat4.multiply(updateModelViews_tempMat4, viewMatrix, currentTransform)
+    vec4.transformMat4(node.lightSource.direction, [0, 0, -1, 0], updateModelViews_tempMat4)
     // Basically, we assume that a light starts off at the origin pointing down
     // the negative z axis, and we use the scene graph transforms to position
     // and orient it, as if it were a model. The lighting manager needs to know
@@ -657,13 +658,13 @@ function updateModelViews_(
       updateModelViews_tempMat4[14],
       1,
     ]
-    const direction: Vec4 = [
-      -updateModelViews_tempMat4[8],
-      -updateModelViews_tempMat4[9],
-      -updateModelViews_tempMat4[10],
-      0,
-    ]
-    applyLightSourceDescriptor({position, direction}, node.lightSource)
+    //const direction: Vec4 = [
+    //  -updateModelViews_tempMat4[8],
+    //  -updateModelViews_tempMat4[9],
+    //  -updateModelViews_tempMat4[10],
+    //  0,
+    //]
+    applyLightSourceDescriptor({position}, node.lightSource)
 
     break
   }

@@ -49,7 +49,7 @@ struct AtlasData {
 }
 
 @group(0) @binding(0) var<uniform> uniforms:     Uniforms;
-@group(0) @binding(1) var<uniform> lighting:     Lighting;
+@group(0) @binding(1) var<storage> lighting:     Lighting;
 @group(0) @binding(2) var<storage> materialData: MaterialData;
 @group(0) @binding(4) var<storage> atlasData:    AtlasData;
 @group(0) @binding(5) var          mySampler:    sampler;
@@ -104,24 +104,61 @@ fn main(
   var diffuse  = vec3<f32>(0);
   var specular = vec3<f32>(0);
   var emissive = material.emissive.rgb;
+  //for (var i:u32 = 0; i < lighting.count; i = i+1) {
+  //  let light     = lighting.data[i];
+  //  let path      = light.position.xyz - position;
+  //  let lightDir  = normalize(path);
+  //  let dist      = length(path);
+  //  let level     = attenuate(dist, light.attenuation);
+  //  
+  //  if(material.ambient.a > 0 && light.ambient.a > 0) {
+  //    ambient += light.ambient.rgb * material.ambient.rgb * level;
+  //  }
+  //  if(materialDiffuse.a > 0 && light.diffuse.a > 0) {
+  //    let diff = max(dot(lightDir, normal), 0);
+  //    diffuse += light.diffuse.rgb * materialDiffuse.rgb * diff * level;
+  //  }
+  //  if(material.specular.a > 0 && light.specular.a > 0 && shininess > 0) {
+  //    let halfway = normalize(lightDir + viewDir);
+  //    let spec = pow(max(dot(normal, halfway), 0), shininess);
+  //    specular += light.specular.rgb * material.specular.rgb * spec * level;
+  //  }
+  //}
   for (var i:u32 = 0; i < lighting.count; i = i+1) {
-    let light     = lighting.data[i];
-    let path      = light.position.xyz - position;
-    let lightDir  = normalize(path);
-    let dist      = length(path);
-    let level     = attenuate(dist, light.attenuation);
-    
-    if(material.ambient.a > 0 && light.ambient.a > 0) {
-      ambient += light.ambient.rgb * material.ambient.rgb * level;
+    let light      = lighting.data[i];
+    var lightLevel = 0.0;
+    var lightDir   = vec3<f32>(0);
+    if(light.type_ == 0) { // point light
+      let path   = light.position.xyz - position;
+      let dist   = length(path);
+      lightDir   = normalize(path);
+      lightLevel = attenuate(dist, light.attenuation);
+    } else if(light.type_ == 1) { // directional light
+      lightDir   = light.direction.xyz;
+      lightLevel = 1;
+    } else if(light.type_ == 2) { // spot light
+      let path      = light.position.xyz - position;
+      let dir       = normalize(path);
+      let theta     = dot(dir, -light.direction.xyz);
+      let phi       = light.cone.x;
+      let gamma     = light.cone.y;
+      let epsilon   = phi - gamma;
+      let intensity = clamp((theta - gamma) / epsilon, 0, 1);
+      let dist      = length(path);
+      lightDir      = dir;
+      lightLevel    = intensity * attenuate(dist, light.attenuation);
     }
-    if(materialDiffuse.a > 0 && light.diffuse.a > 0) {
+    if(material.ambient.a > 0 && light.ambient.a > 0) {
+      ambient += light.ambient.rgb * material.ambient.rgb * lightLevel;
+    }
+    if(material.diffuse.a > 0 && materialDiffuse.a > 0 && light.diffuse.a > 0) {
       let diff = max(dot(lightDir, normal), 0);
-      diffuse += light.diffuse.rgb * materialDiffuse.rgb * diff * level;
+      diffuse += light.diffuse.rgb * materialDiffuse.rgb * diff * lightLevel;
     }
     if(material.specular.a > 0 && light.specular.a > 0 && shininess > 0) {
       let halfway = normalize(lightDir + viewDir);
       let spec = pow(max(dot(normal, halfway), 0), shininess);
-      specular += light.specular.rgb * material.specular.rgb * spec * level;
+      specular += light.specular.rgb * material.specular.rgb * spec * lightLevel;
     }
   }
 

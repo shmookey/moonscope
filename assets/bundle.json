@@ -11,15 +11,15 @@
     {"label": "sand/rough",    "id": 6, "size": [ 1024, 1024 ], "src": "/assets/texture/moon-1/rough.jpg", "wrappable": true}
   ],
   "materials": [
-    {"name": "default", "textures": {"colour": "default"}},
-    {"name": "dish",    "textures": {"colour": "dish/colour", "normal": "dish/normal", "rough": "dish/rough"}, "ambient": [0.005,0.005,0.005,1]},
+    {"name": "default", "textures": {"colour": "default"}, "ambient": [0,0,0,0]},
+    {"name": "dish",    "textures": {"colour": "dish/colour", "normal": "dish/normal", "rough": "dish/rough"}, "ambient": [0.005,0.005,0.005,0]},
     {
       "name":     "ground",  
-      "ambient":  [1,   1,   1,   0],
+      "ambient":  [0,   0,   0,   0],
       "diffuse":  [0.5, 0.5, 0,   1],
-      "specular": [0.3, 0.3, 0.3, 0],
-      "shininess": 16,
-      "textures": {"colour": "sand/colour", "normal": "sand/normal", "rough": "sand/rough"}
+      "specular": [0.2, 0.2, 0.15, 1],
+      "shininess": 8,
+      "textures": {"colour": "sand/colour", "normal": "sand/normal"}
     },{
       "name":     "cube", 
       "ambient":  [0.1, 0,   0,   1],
@@ -102,11 +102,17 @@
                 ]}
             ]
           },
-          { "name": "point-light-1", "type": "transform",
+          { "name": "point-light-1", "type": "transform", "visible": false,
             "transform": {"type": "trs", "translation": [0, 5, 1] },
             "children": [
               { "type": "model", "modelName": "point-light", "transform": {"type": "trs", "scale": [0.1, 0.1, 0.1]} },
               { "type": "light", "lightType": "point", "attenuation": [1, 0, 0.1, 0], "ambient": [0.2, 0.2, 0.2, 1], "diffuse": [0.5, 0.5, 0.5, 1], "specular": [1, 1, 1, 1] }
+            ]},
+          { "name": "spot-light-1", "type": "transform",
+            "transform": {"type": "trs", "translation": [0, 8, 0], "rotation": [-0.7071, 0, 0, 0.7071] },
+            "children": [
+              { "type": "model", "modelName": "point-light", "transform": {"type": "trs", "scale": [0.1, 0.1, 0.1]} },
+              { "type": "light", "lightType": "spot", "direction": [0,-1,0,0], "cone": [0.9,0.8], "attenuation": [1, 0, 0.1, 0], "ambient": [0.2, 0.2, 0.2, 1], "diffuse": [0.5, 0.5, 0.5, 1], "specular": [1, 1, 1, 1] }
             ]}
         ]
       },

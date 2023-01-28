@@ -25,7 +25,7 @@ export function getBindGroupLayoutDescriptor(): GPUBindGroupLayoutDescriptor {
       // Lighting uniforms
       binding: 1, 
       visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-      buffer: { type: 'uniform' },
+      buffer: { type: 'read-only-storage' },
     }, { 
       // Materials data
       binding: 2, 
@@ -136,6 +136,7 @@ export function createMainSampler(device: GPUDevice): GPUSampler {
     minFilter:     'linear',
     mipmapFilter:  'linear',
     maxAnisotropy: 1,
+    lodMinClamp:   2,
   })
 }
 

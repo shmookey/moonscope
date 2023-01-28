@@ -18,7 +18,7 @@ struct Light {
 
 struct Lighting {
   count: u32,
-  data:  array<Light, 16>, // TODO: hope webgpu lets us use override values for this soon...
+  data:  array<Light, 16>, 
 }
 
 struct Material {
@@ -54,7 +54,7 @@ struct AtlasData {
 }
 
 @group(0) @binding(0) var<uniform> uniforms:     Uniforms;
-@group(0) @binding(1) var<uniform> lighting:     Lighting;
+@group(0) @binding(1) var<storage> lighting:     Lighting;
 @group(0) @binding(2) var<storage> materialData: MaterialData;
 @group(0) @binding(3) var<storage> instanceData: InstanceData;
 @group(0) @binding(4) var<storage> atlasData:    AtlasData;
@@ -67,58 +67,58 @@ fn attenuate(dist: f32, attenuation: vec4<f32>) -> f32 {
                (attenuation.z * dist * dist));
 }
 
-fn getDiffuse(light: Light, direction: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
-  let diffuse  = max(dot(direction, normal), 0.0);
-  return light.diffuse.rgb * diffuse;
-}
-
-fn getSpecular(light: Light, direction: vec3<f32>, viewDirection: vec3<f32>, normal: vec3<f32>, shininess: f32) -> vec3<f32> {
-  let halfway   = normalize(direction + viewDirection);
-  let specular = pow(max(dot(normal, halfway), 0), 32);
-  return light.specular.rgb * specular * shininess;
-}
-
-fn getMappedNormal(modelNormal: vec3<f32>, texelNormal: vec3<f32>, tangent: vec3<f32>, bitangent: vec3<f32>) -> vec3<f32> {
-  let tbn = mat3x3<f32>(tangent, bitangent, modelNormal);
-  return normalize(tbn * texelNormal);
-}
-
-fn getLighting(
-    position:      vec3<f32>, 
-    normal:        vec3<f32>, 
-    tangent:       vec3<f32>, 
-    bitangent:     vec3<f32>, 
-    texelNormal:   vec4<f32>, 
-    texelSpecular: vec2<f32>,
-    lightLevel:    vec4<f32>,
-    lightDir:      vec3<f32>,
-    materialSlot:  u32) -> vec3<f32> {
-
-  var lightValue = vec3<f32>(0);
-  let precalculatedLightCount: u32 = 1; // todo: support more
-  let material = materialData.data[materialSlot];
-  for (var i = 0u; i < precalculatedLightCount; i = i + 1u) {
-    let light = lighting.data[i];
-    let direction = lightDir;
-    let level = lightLevel[i]; 
-    if(level < 0.001) {
-      continue;
-    }
-    if (light.type_ == 0) {
-      if(texelNormal.a > 0) {
-        let mappedNormal = getMappedNormal(normal, texelNormal.xyz, tangent, bitangent);
-        let diffuseComponent  = getDiffuse(light, direction, mappedNormal);
-        lightValue += diffuseComponent * level;
-        if(texelSpecular.g > 0) {
-          let specularComponent = getSpecular(light, -position, direction, mappedNormal, texelSpecular.r);
-          lightValue += specularComponent * level;
-        }
-      }
-    }
-  }
-
-  return material.ambient.xyz + lightValue;
-}
+//fn getDiffuse(light: Light, direction: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
+//  let diffuse  = max(dot(direction, normal), 0.0);
+//  return light.diffuse.rgb * diffuse;
+//}
+//
+//fn getSpecular(light: Light, direction: vec3<f32>, viewDirection: vec3<f32>, normal: vec3<f32>, shininess: f32) -> vec3<f32> {
+//  let halfway   = normalize(direction + viewDirection);
+//  let specular = pow(max(dot(normal, halfway), 0), 32);
+//  return light.specular.rgb * specular * shininess;
+//}
+//
+//fn getMappedNormal(modelNormal: vec3<f32>, texelNormal: vec3<f32>, tangent: vec3<f32>, bitangent: vec3<f32>) -> vec3<f32> {
+//  let tbn = mat3x3<f32>(tangent, bitangent, modelNormal);
+//  return normalize(tbn * texelNormal);
+//}
+//
+//fn getLighting(
+//    position:      vec3<f32>, 
+//    normal:        vec3<f32>, 
+//    tangent:       vec3<f32>, 
+//    bitangent:     vec3<f32>, 
+//    texelNormal:   vec4<f32>, 
+//    texelSpecular: vec2<f32>,
+//    lightLevel:    vec4<f32>,
+//    lightDir:      vec3<f32>,
+//    materialSlot:  u32) -> vec3<f32> {
+//
+//  var lightValue = vec3<f32>(0);
+//  let precalculatedLightCount: u32 = 1; // todo: support more
+//  let material = materialData.data[materialSlot];
+//  for (var i = 0u; i < precalculatedLightCount; i = i + 1u) {
+//    let light = lighting.data[i];
+//    let direction = lightDir;
+//    let level = lightLevel[i]; 
+//    if(level < 0.001) {
+//      continue;
+//    }
+//    if (light.type_ == 0) {
+//      if(texelNormal.a > 0) {
+//        let mappedNormal = getMappedNormal(normal, texelNormal.xyz, tangent, bitangent);
+//        let diffuseComponent  = getDiffuse(light, direction, mappedNormal);
+//        lightValue += diffuseComponent * level;
+//        if(texelSpecular.g > 0) {
+//          let specularComponent = getSpecular(light, -position, direction, mappedNormal, texelSpecular.r);
+//          lightValue += specularComponent * level;
+//        }
+//      }
+//    }
+//  }
+//
+//  return material.ambient.xyz + lightValue;
+//}
 
 fn modw(a: f32, b: f32) -> f32 {
   return a - b * floor(a / b);
@@ -145,7 +145,7 @@ fn main(
   let viewDir = normalize(-position);
  
   // Material properties
-  let material        = materialData.data[materialSlot];
+  var material        = materialData.data[materialSlot];
   var materialDiffuse = material.diffuse;
   var shininess       = material.shininess;
 
@@ -178,23 +178,32 @@ fn main(
   var diffuse  = vec3<f32>(0);
   var specular = vec3<f32>(0);
   var emissive = material.emissive.rgb;
-  let precalcLightCount: u32 = 1; // todo: support more
   for (var i:u32 = 0; i < lighting.count; i = i+1) {
     let light      = lighting.data[i];
     var lightLevel = 0.0;
     var lightDir   = vec3<f32>(0);
-    if(i < precalcLightCount) {
-      lightDir   = precalcLightDir;
-      lightLevel = precalcLightLevel[i];
-    } else {
+    if(light.type_ == 0) { // point light
       let path   = light.position.xyz - position;
       let dist   = length(path);
       lightDir   = normalize(path);
       lightLevel = attenuate(dist, light.attenuation);
+    } else if(light.type_ == 1) { // directional light
+      lightDir   = light.direction.xyz;
+      lightLevel = 1;
+    } else if(light.type_ == 2) { // spot light
+      let path      = light.position.xyz - position;
+      let dir       = normalize(path);
+      let theta     = dot(dir, -light.direction.xyz);
+      let phi       = light.cone.x;
+      let gamma     = light.cone.y;
+      let epsilon   = phi - gamma;
+      let intensity = clamp((theta - gamma) / epsilon, 0, 1);
+      let dist      = length(path);
+      lightDir      = dir;
+      lightLevel    = intensity * attenuate(dist, light.attenuation);
     }
-    
     if(material.ambient.a > 0 && light.ambient.a > 0) {
-      ambient += light.ambient.rgb * material.ambient.rgb * materialDiffuse.rgb * lightLevel;
+      ambient += light.ambient.rgb * material.ambient.rgb * lightLevel;
     }
     if(material.diffuse.a > 0 && materialDiffuse.a > 0 && light.diffuse.a > 0) {
       let diff = max(dot(lightDir, normal), 0);
