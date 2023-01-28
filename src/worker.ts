@@ -1,5 +1,5 @@
 import type { InitMessage, InputState, ErrorMessage, Message, WorkerState, FrameStats } from './types'
-import type { Mat4, ErrorType, MatrixDescriptor, Quat } from './ratite/types'
+import type { Mat4, ErrorType, MatrixDescriptor, Quat, CameraNode } from './ratite/types'
 import { initGPU } from './ratite/gpu.js'
 import { createRenderer, renderFrame } from './ratite/render.js'
 import { loadResourceBundle } from './ratite/resource.js'
@@ -62,7 +62,7 @@ async function init(opts: InitMessage): Promise<void> {
 
   state.legacyScene = await createScene(state.renderer.mainUniformBuffer, state.gpu)
   state.sceneGraph = bundle.scenes[0] //setupSceneGraph(renderer)
-  state.mainCamera = state.sceneGraph.views.default.camera
+  state.mainCamera = state.sceneGraph.views.default.node as CameraNode
   const telescopeNode = getNodeByName('telescope', state.sceneGraph)
   state.telescope = createTelescope(telescopeNode, defaultTelescopeDescriptor, state.sceneGraph)
   state.lastPhysicsFrame = performance.now()

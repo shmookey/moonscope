@@ -93,7 +93,7 @@ export function createPipelineLayouts(device: GPUDevice): PipelineLayoutState {
       binding: 0,
       visibility: GPUShaderStage.FRAGMENT,
       texture: { 
-        sampleType:    'float', 
+        sampleType:    'depth', 
         viewDimension: '2d-array'
       },
     }]
@@ -212,7 +212,7 @@ export function createForwardRenderPipeline(
   sampleCount:        number = 1): GPURenderPipeline {
 
   const pipeline = device.createRenderPipeline({
-    label: name,
+    label: `forward-render-pipeline::${name}`,
     layout: layouts.forwardRenderPipelineLayout,
     vertex: {
       module: vertexShader,
@@ -265,3 +265,64 @@ export function createForwardRenderPipeline(
   return pipeline
 }
 
+/** Create a pipeline object for depth pass rendering. */
+export function createDepthPassPipeline(
+  name:               string,
+  vertexShader:       GPUShaderModule,
+  fragShader:         GPUShaderModule,
+  layouts:            PipelineLayoutState,
+  device:             GPUDevice,
+  alphaBlending:      boolean = false): GPURenderPipeline {
+
+  const target: GPUColorTargetState = {
+    format: 'depth24plus',
+  }
+  if (alphaBlending) {
+    target.blend = {
+      color: { operation: 'add', srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+      alpha: { operation: 'add', srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' },
+    }
+  }
+  const pipeline = device.createRenderPipeline({
+    label: `depth-pass-pipeline::${name}`,
+    layout: layouts.forwardRenderPipelineLayout,
+    vertex: {
+      module: vertexShader,
+      entryPoint: 'main',
+      buffers: [{
+        arrayStride: VERTEX_SIZE,
+        stepMode: 'vertex',
+        attributes: [
+          { shaderLocation: 0, offset: 0,  format: 'float32x4' }, // position
+          { shaderLocation: 1, offset: 16, format: 'float32x2' }, // uv
+          { shaderLocation: 2, offset: 24, format: 'snorm16x4' }, // normal
+          { shaderLocation: 3, offset: 32, format: 'snorm16x4' }, // tangent
+          { shaderLocation: 4, offset: 40, format: 'snorm16x4' }, // bitangent
+          { shaderLocation: 5, offset: 48, format: 'uint32x4'  }, // textures
+        ]
+      }, {
+        arrayStride: 4,
+        stepMode: 'instance',
+        attributes: [
+          { shaderLocation: 6, offset: 0, format: 'uint32' }, // storage index
+        ]
+      }]
+    },
+    fragment: {
+      module:     fragShader,
+      entryPoint: 'main',
+      targets:    [],      // TODO: restore this functionality
+    },
+    primitive: {
+      topology:  'triangle-list',
+      frontFace: 'ccw',
+      cullMode:  'back',
+    },
+    depthStencil: {
+      depthWriteEnabled: true,
+      depthCompare:      'less',
+      format:            'depth24plus',
+    },
+  })
+  return pipeline
+}

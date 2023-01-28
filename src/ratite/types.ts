@@ -364,7 +364,7 @@ export type SceneGraph = {
   models:             { [name: string]: Model },
   renderer:           Renderer,
   nextDrawCallId:     number,
-  views:              { [name: string]: View }, // Named view objects, connect to cameras
+  views:              { [name: string]: View }, // Named view objects, connect to cameras and lights
   uniformBuffer:      GPUBuffer,
   uniformData:        ArrayBuffer,
   uniformFloats:      Float32Array,
@@ -393,10 +393,15 @@ export interface BaseNode {
   visible:   boolean,       // Visibility toggle
 }
 
-/** Light source node. */
+/** Light source node.
+ * 
+ * Can be attached to a view to render a shadow map.
+ */
 export interface LightSourceNode extends BaseNode {
   nodeType:    'light',
   lightSource: LightSource,
+  castShadows: boolean,
+  view:        View | null,
 }
 
 /** Model node, a type of leaf node. */
@@ -425,13 +430,14 @@ export interface CameraNode extends BaseNode {
 
 /** Scene view.
  * 
- * Stores view/projection matrices and may be connected to a camera node.
+ * Stores view/projection matrices and may be connected to camera and light
+ * nodes.
  */
 export type View = {
   name:       string,
   projection: Mat4,
   viewMatrix: Mat4,
-  camera:     CameraNode | null,
+  node:       CameraNode | LightSourceNode | null,
 }
 
 //
@@ -509,6 +515,7 @@ export interface LightSourceNodeDescriptor extends BaseNodeDescriptor {
   diffuse?:     Vec4,
   specular?:    Vec4,
   cone?:        Vec2,
+  castShadows?: boolean,
 }
 
 /** Model node, a type of leaf node. */

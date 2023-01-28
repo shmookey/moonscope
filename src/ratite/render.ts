@@ -8,7 +8,7 @@ import {createInstanceAllocator} from './instance.js'
 import {INDEX_SIZE, INSTANCE_INDEX_SIZE, UNIFORM_BUFFER_FLOATS, 
   VERTEX_SIZE} from './constants.js'
 import {createMeshStore} from './mesh.js'
-import {updateModelViews} from './scene.js'
+import {prepareForRender} from './scene.js'
 import {updateLightingBuffer} from './lighting.js'
 import { createMaterialState } from './material.js'
 
@@ -143,7 +143,7 @@ export function renderFrame(scene: Scene, sceneGraph: SceneGraph, state: Rendere
     .getCurrentTexture()
     .createView()
   }
-  updateModelViews(sceneGraph.views.default, sceneGraph)
+  prepareForRender(sceneGraph.views.default, sceneGraph)
   updateLightingBuffer(sceneGraph.lightingState)
   
   gpu.renderPassDescriptor.depthStencilAttachment = {

@@ -51,7 +51,7 @@ export function createSceneGraph(
   const uniformBuffer = createMainUniformBuffer(renderer.device)
   const uniformData = new ArrayBuffer(uniformBuffer.size)
   const lightingState = createLightingState(lightSourceCapacity, renderer.device)
-  const shadowMapState = createShadowMapper(16, [1024, 1024], 'rgba8unorm', renderer.device)
+  const shadowMapState = createShadowMapper(16, [1024, 1024], renderer.device)
   const geometryBindGroup = createGeometryBindGroup(
     uniformBuffer,
     renderer.instanceAllocator.storageBuffer,
@@ -340,7 +340,7 @@ export function createSceneView(
     name:       name,
     projection: mat4.create() as Mat4,
     viewMatrix: mat4.create() as Mat4,
-    camera:     null,
+    node:       null,
   }
   if(descriptor.type === 'perspective') {
     const aspect = descriptor.aspect == 'auto' 
@@ -416,13 +416,13 @@ export function createModelNode(
 
 /** Create a camera node. */
 export function createCameraNode(viewName: string | null, sceneGraph: SceneGraph): Node {
-  let view = null
+  let view: View | null = null
   if(viewName !== null) {
     if(!(viewName in sceneGraph.views)) {
       throw new Error(`View ${viewName} does not exist.`)
     }
     view = sceneGraph.views[viewName]
-    if(view.camera !== null) {
+    if(view.node !== null) {
       throw new Error(`View ${viewName} already has a camera.`)
     }
   }
@@ -437,7 +437,7 @@ export function createCameraNode(viewName: string | null, sceneGraph: SceneGraph
   }
   sceneGraph.nodes.push(node)
   if(view)
-    view.camera = node
+    view.node = node
   return node
 }
 
@@ -459,6 +459,8 @@ export function createLightSourceNode(
     children:    [],
     lightSource: lightSource,
     visible:     true,
+    castShadows: descriptor.castShadows || false,
+    view:        null,
   }
 
   sceneGraph.nodes.push(node)
@@ -623,20 +625,24 @@ export function getChildNodeByName(name: string, node: Node): Node | null {
   return null
 }
 
-/** Update GPU buffer matrices of all the visible nodes in the scene graph. */
-export function updateModelViews(view: View, sceneGraph: SceneGraph): void {
+/** Update GPU buffer matrices of all the visible nodes in the scene graph. 
+ * 
+ * Do this at the start of a render pass to put all the models and lights in
+ * view space.
+ */
+export function prepareForRender(view: View, sceneGraph: SceneGraph): void {
   const viewMatrix = getViewMatrix(view)
   sceneGraph.uniformFloats.set(viewMatrix, UNIFORM_BUFFER_OFFSET_VIEW / 4)
   sceneGraph.uniformFloats.set(view.projection, UNIFORM_BUFFER_OFFSET_PROJECTION / 4)
   view.viewMatrix = viewMatrix
-  updateModelViews_(sceneGraph.root, mat4.create() as Mat4, viewMatrix, sceneGraph)
+  updateModelViews(sceneGraph.root, mat4.create() as Mat4, viewMatrix, sceneGraph)
   sceneGraph.renderer.device.queue.writeBuffer(sceneGraph.uniformBuffer, 0, sceneGraph.uniformData)
 }
 
 let updateModelViews_tempMat4: Mat4 = mat4.create() as Mat4
 
-/** Internal recursive helper function for updateModelViews. */
-function updateModelViews_(
+/** Internal recursive helper function for perpareForRender. */
+function updateModelViews(
     node:             Node, 
     currentTransform: Mat4, 
     viewMatrix:       Mat4,
@@ -673,19 +679,14 @@ function updateModelViews_(
       updateModelViews_tempMat4[14],
       1,
     ]
-    //const direction: Vec4 = [
-    //  -updateModelViews_tempMat4[8],
-    //  -updateModelViews_tempMat4[9],
-    //  -updateModelViews_tempMat4[10],
-    //  0,
-    //]
+
     applyLightSourceDescriptor({position}, node.lightSource)
 
     break
   }
 
   for(const child of node.children)
-    updateModelViews_(child, mat4.clone(currentTransform) as Mat4, viewMatrix, sceneGraph)
+    updateModelViews(child, mat4.clone(currentTransform) as Mat4, viewMatrix, sceneGraph)
 }
 
 /** Calculate the model matrix for a node. */
@@ -703,9 +704,9 @@ export function getModelMatrix(node: Node): Mat4 {
 
 /** Calculate the view matrix for a view. */
 export function getViewMatrix(view: View): Mat4 {
-  if(!view.camera)
-    throw new Error('View has no camera.')
-  const cameraModelMatrix = getModelMatrix(view.camera)
+  if(!view.node)
+    throw new Error('View is not attached to a camera or light node.')
+  const cameraModelMatrix = getModelMatrix(view.node)
   mat4.invert(cameraModelMatrix, cameraModelMatrix)
   return cameraModelMatrix
 }
