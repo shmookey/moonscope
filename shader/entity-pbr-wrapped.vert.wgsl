@@ -68,10 +68,10 @@ struct Lighting {
 
 
 @group(0) @binding(0) var<uniform> uniforms:     Uniforms;
-@group(0) @binding(1) var<storage> lighting:     Lighting;
-@group(0) @binding(2) var<storage> materialData: MaterialData;
-@group(0) @binding(3) var<storage> instanceData: InstanceData;
-@group(0) @binding(4) var<storage> atlasData:    AtlasData;
+@group(0) @binding(1) var<storage> instanceData: InstanceData;
+@group(0) @binding(2) var<storage> lighting:     Lighting;
+@group(1) @binding(0) var<storage> materialData: MaterialData;
+@group(1) @binding(1) var<storage> atlasData:    AtlasData;
 
 fn attenuate(dist: f32, attenuation: vec4<f32>) -> f32 {
   return 1.0 / (attenuation.x + 

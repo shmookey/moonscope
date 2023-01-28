@@ -11,9 +11,10 @@ import {activateInstance, addInstance, deactivateInstance, registerAllocation, s
 import {getMeshById, getMeshByName} from "./mesh.js"
 import {INSTANCE_RECORD_SIZE, UNIFORM_BUFFER_OFFSET_PROJECTION, UNIFORM_BUFFER_OFFSET_VIEW} from "./constants.js"
 import {arraySet, latLonToUnitVec} from "./common.js"
-import {createBindGroup, createMainUniformBuffer} from "./pipeline.js"
+import {createGeometryBindGroup, createMaterialsBindGroup, createMainUniformBuffer, createShadowMapBindGroup} from "./pipeline.js"
 import {activateLightSource, applyLightSourceDescriptor, createLightingState, createLightSource, deactivateLightSource} from "./lighting.js"
 import { useMaterialByName } from "./material.js"
+import { createShadowMapper } from "./shadow.js"
 const { PI } = Math
 glMatrix.setMatrixArrayType(Array)
 
@@ -50,15 +51,22 @@ export function createSceneGraph(
   const uniformBuffer = createMainUniformBuffer(renderer.device)
   const uniformData = new ArrayBuffer(uniformBuffer.size)
   const lightingState = createLightingState(lightSourceCapacity, renderer.device)
-  const bindGroup = createBindGroup(
-    label,
-    renderer.bindGroupLayout,
+  const shadowMapState = createShadowMapper(16, [1024, 1024], 'rgba8unorm', renderer.device)
+  const geometryBindGroup = createGeometryBindGroup(
     uniformBuffer,
-    lightingState.buffer,
-    renderer.materials.buffer,
     renderer.instanceAllocator.storageBuffer,
-    renderer.atlas,
-    renderer.mainSampler,
+    lightingState.buffer,
+    renderer.pipelineLayouts,
+    renderer.device)
+  const materialsBindGroup = createMaterialsBindGroup(
+      renderer.materials.buffer,
+      renderer.atlas,
+      renderer.mainSampler,
+      renderer.pipelineLayouts,
+      renderer.device)
+  const shadowMapBindGroup = createShadowMapBindGroup(
+    shadowMapState.texture,
+    renderer.pipelineLayouts,
     renderer.device)
   const rootNode: TransformNode = {
     nodeType:  'transform',
@@ -71,19 +79,22 @@ export function createSceneGraph(
   }
   rootNode.root = rootNode
   return {
-    renderer:       renderer,
-    root:           rootNode,
-    nodes:          [],
-    drawCalls:      [],
-    models:         {},
-    nextDrawCallId: 0,
-    views:          {},
-    uniformBuffer:  uniformBuffer,
-    uniformData:    uniformData,
-    uniformFloats:  new Float32Array(uniformData),
-    uniformView:    new DataView(uniformData),
-    bindGroup:      bindGroup,
-    lightingState:  lightingState,
+    renderer:           renderer,
+    root:               rootNode,
+    nodes:              [],
+    drawCalls:          [],
+    models:             {},
+    nextDrawCallId:     0,
+    views:              {},
+    uniformBuffer:      uniformBuffer,
+    uniformData:        uniformData,
+    uniformFloats:      new Float32Array(uniformData),
+    uniformView:        new DataView(uniformData),
+    lightingState:      lightingState,
+    shadowMapState:     shadowMapState,
+    geometryBindGroup:  geometryBindGroup,
+    materialsBindGroup: materialsBindGroup,
+    shadowMapBindGroup: shadowMapBindGroup,
   }
 }
 
@@ -499,12 +510,16 @@ export function registerSceneGraphModel(
     instanceBuffer:  instanceAllocator.instanceBuffer,
     instancePointer: allocation.instanceIndex * 4,
     instanceCount:   0,
-    bindGroup:       sceneGraph.bindGroup,
     pipeline:        pipeline,
     indexPointer:    mesh.indexPointer,
     indexBuffer:     meshStore.indexBuffer,
     indexOffset:     mesh.indexOffset,
     indexCount:      mesh.indexCount,
+    bindGroups: [
+      sceneGraph.geometryBindGroup, 
+      sceneGraph.materialsBindGroup,
+      sceneGraph.shadowMapBindGroup,
+    ],
   }
   
   

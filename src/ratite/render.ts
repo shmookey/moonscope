@@ -1,7 +1,7 @@
 import type {Camera, GPUContext, Mat4, Scene, Renderer, SceneGraph, 
   PipelineStore, ShaderStore} from './types'
-import {createMainBindGroupLayout, createMainPipelineLayout, createMainSampler,
-  createMainUniformBuffer, createPipeline} from './pipeline.js'
+import {createPipelineLayouts, createMainSampler,
+  createMainUniformBuffer, createForwardRenderPipeline} from './pipeline.js'
 import {mat4} from 'gl-matrix'
 import {createAtlas} from './atlas.js'
 import {createInstanceAllocator} from './instance.js'
@@ -45,10 +45,7 @@ export async function createRenderer(
     VERTEX_SIZE, 
     INDEX_SIZE, 
     gpu.device)
-  const bindGroupLayout = createMainBindGroupLayout(gpu.device)
-  const pipelineLayout = createMainPipelineLayout(
-    bindGroupLayout,
-    gpu.device)
+  const pipelineLayouts = createPipelineLayouts(gpu.device)
   const instanceAllocator = createInstanceAllocator(gpu.device, instanceStorageCapacity)
   const mainSampler = createMainSampler(gpu.device)
   const mainUniformBuffer = createMainUniformBuffer(gpu.device)
@@ -66,10 +63,9 @@ export async function createRenderer(
     outputSize,
     uniformData,
     viewMatrix,
-    bindGroupLayout,
     mainUniformBuffer,
     mainSampler,
-    pipelineLayout,
+    pipelineLayouts,
     atlas,
     instanceAllocator,
     meshStore,
@@ -120,7 +116,10 @@ export function renderView(
     const verticesLength = call.vertexCount * VERTEX_SIZE
     const instancesLength = call.instanceCount * INSTANCE_INDEX_SIZE
     passEncoder.setPipeline(call.pipeline)
-    passEncoder.setBindGroup(0, call.bindGroup)
+    for(let i = 0; i < call.bindGroups.length; i++) {
+      if(call.bindGroups[i])
+        passEncoder.setBindGroup(i, call.bindGroups[i])
+    }
     passEncoder.setVertexBuffer(0, vertexBuffer)
     passEncoder.setVertexBuffer(1, instanceBuffer, instancePointer, instancesLength)
     passEncoder.setIndexBuffer(call.indexBuffer, 'uint32')
@@ -163,7 +162,7 @@ export function renderFrame(scene: Scene, sceneGraph: SceneGraph, state: Rendere
 //}, 0)
 }
 
-export async function makePipeline(
+export async function makeForwardRenderPipeline(
     name:               string,
     vertexShaderPath:   string,
     fragmentShaderPath: string,
@@ -177,11 +176,11 @@ export async function makePipeline(
   if(!(fragmentShaderPath in renderer.shaders))
     throw new Error(`Fragment shader ${fragmentShaderPath} not loaded.`)
 
-  const pipeline = createPipeline(
+  const pipeline = createForwardRenderPipeline(
     name, 
     renderer.shaders[vertexShaderPath], 
     renderer.shaders[fragmentShaderPath], 
-    renderer.pipelineLayout, 
+    renderer.pipelineLayouts, 
     renderer.context.presentationFormat, 
     renderer.device,
     enableDepthBuffer,

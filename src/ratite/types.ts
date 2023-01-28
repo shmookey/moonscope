@@ -357,20 +357,23 @@ export type Model = {
  * may be used to render the scene.
  */
 export type SceneGraph = {
-  label?:         string,
-  root:           Node,
-  nodes:          Node[],
-  drawCalls:      DrawCallDescriptor[],
-  models:         { [name: string]: Model },
-  renderer:       Renderer,
-  nextDrawCallId: number,
-  views:          { [name: string]: View }, // Named view objects, connect to cameras
-  bindGroup:      GPUBindGroup,
-  uniformBuffer:  GPUBuffer,
-  uniformData:    ArrayBuffer,
-  uniformFloats:  Float32Array,
-  uniformView:    DataView,
-  lightingState:  LightingState,
+  label?:             string,
+  root:               Node,
+  nodes:              Node[],
+  drawCalls:          DrawCallDescriptor[],
+  models:             { [name: string]: Model },
+  renderer:           Renderer,
+  nextDrawCallId:     number,
+  views:              { [name: string]: View }, // Named view objects, connect to cameras
+  uniformBuffer:      GPUBuffer,
+  uniformData:        ArrayBuffer,
+  uniformFloats:      Float32Array,
+  uniformView:        DataView,
+  lightingState:      LightingState,
+  shadowMapState:     ShadowMapState,
+  materialsBindGroup: GPUBindGroup,
+  geometryBindGroup:  GPUBindGroup,
+  shadowMapBindGroup: GPUBindGroup,
 }
 
 /** Scene node. */
@@ -585,10 +588,9 @@ export type ModelDescriptor = {
 export type Renderer = {
   viewMatrix:          Mat4,
   uniformData:         Float32Array,
-  bindGroupLayout:     GPUBindGroupLayout,
   mainUniformBuffer:   GPUBuffer,
   mainSampler:         GPUSampler,
-  pipelineLayout:      GPUPipelineLayout,
+  pipelineLayouts:     PipelineLayoutState,
   atlas:               Atlas,
   instanceAllocator:   InstanceAllocator,
   meshStore:           MeshStore,
@@ -619,7 +621,7 @@ export type DrawCallDescriptor = {
   instanceBuffer:  GPUBuffer,
   instancePointer: number,
   instanceCount:   number,
-  bindGroup:       GPUBindGroup,
+  bindGroups:      GPUBindGroup[],
   pipeline:        GPURenderPipeline,
   indexBuffer:     GPUBuffer,
   indexPointer:    number,
@@ -637,6 +639,15 @@ export type GPUContext = {
   entities:             Renderable[];
   presentationSize:     { width: number; height: number };
   aspect:               number;
+}
+
+/** Pipeline layout cache. */
+export type PipelineLayoutState = {
+  geometryBindGroupLayout:     GPUBindGroupLayout,
+  materialsBindGroupLayout:    GPUBindGroupLayout,
+  shadowMapBindGroupLayout:    GPUBindGroupLayout,
+  forwardRenderPipelineLayout: GPUPipelineLayout,
+  depthPassPipelineLayout:     GPUPipelineLayout,
 }
 
 // Legacy - to be removed
@@ -759,6 +770,47 @@ export type MaterialState = {
   slots:          Material[],  // List of active materials in slot order
   atlas:          Atlas        // Texture atlas for material textures
 }
+
+//
+//    SHADOW MAPPING
+//
+
+/** Shadow map object.
+ * 
+ * A shadow map is a 2D texture that stores the depth of the scene from the
+ * perspective of a light source. It is used to determine which parts of the
+ * scene are in shadow and which are in light.
+ * 
+ * This object associates a light source with a depth texture and a projection
+ * matrix. The texture is actually a view of a 2D array texture, with each
+ * layer in the array corresponding to a different shadow map. The projection
+ * matrix is derived from the configuration of the light source.
+ */
+export type ShadowMap = {
+  id:          number,         // Unique ID for shadow map
+  light:       LightSource,    // Light source associated with shadow map
+  texture:     GPUTexture,     // Underlying texture resource
+  textureView: GPUTextureView, // View of this shadow map's layer
+  layer:       number,         // Layer in texture array
+}
+
+/** Shadow map manager state. */
+export type ShadowMapState = {
+  shadowMaps:      ShadowMap[],             // List of shadow maps indexed by ID
+  nextShadowMapID: number,                  // Next shadow map ID to allocate
+  texture:         GPUTexture,              // Underlying texture resource
+  capacity:        number,                  // Maximum number of shadow maps
+  usage:           number,                  // Current number of shadow maps
+  device:          GPUDevice,               // GPU device context
+  resolution:      [number, number],        // Resolution of shadow maps
+  format:          GPUTextureFormat,        // Format of shadow maps
+//  renderPass:      GPURenderPassDescriptor, // Depth render pass descriptor
+//  pipeline:        GPURenderPipeline,       // Depth render pipeline
+//  bindGroup:       GPUBindGroup,            // Depth render bind group
+  
+}
+
+
 
 
 //

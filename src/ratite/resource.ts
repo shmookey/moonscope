@@ -2,11 +2,11 @@ import type {
   ResourceBundleDescriptor, TextureResourceDescriptor, MeshResourceDescriptor,
   Atlas, ResourceBundle, TextureResource, MeshResource, MeshStore,
   TextureRemapping, ShaderStore, ShaderResourceDescriptor, PipelineDescriptor,
-  MeshVertex, Renderer
+  MeshVertex, Renderer, PipelineLayoutState
 } from "./types"
 import { addSubTexture, copyImageBitmapToSubTexture2, copyImageToSubTexture } from "./atlas.js"
 import {addMesh, getMeshById, serialiseVertices} from "./mesh.js"
-import {createPipeline} from "./pipeline.js"
+import {createForwardRenderPipeline} from "./pipeline.js"
 import {createSceneGraphFromDescriptor} from "./scene.js"
 import { applyMaterialDescriptor, createMaterial } from "./material.js"
 
@@ -24,7 +24,7 @@ export async function loadResourceBundleFromDescriptor(
   const startTime = performance.now()
   console.debug(`Loading resources for bundle${descriptor.label ? ` '${descriptor.label}'` : ''}...`)
   const {meshes, label, textures} = descriptor
-  const {atlas, meshStore, device, pipelineLayout} = renderer
+  const {atlas, meshStore, device, pipelineLayouts} = renderer
   const shaderStore = renderer.shaders
   const pipelineStore = renderer.pipelines
   const materialStore = renderer.materials
@@ -71,7 +71,7 @@ export async function loadResourceBundleFromDescriptor(
   for(let pipeline of descriptor.pipelines) {
     if(pipeline.name in pipelineStore)
       throw new Error(`Pipeline '${pipeline.name}' already exists`)
-    pipelineStore[pipeline.name] = setupPipeline(pipeline, shaderStore, pipelineLayout, presentationFormat, device)
+    pipelineStore[pipeline.name] = setupPipeline(pipeline, shaderStore, pipelineLayouts, presentationFormat, device)
   }
 
   // Setup scenes
@@ -221,22 +221,22 @@ export async function loadShaderResource(descriptor: ShaderResourceDescriptor, d
 }
 
 export function setupPipeline(
-  descriptor:  PipelineDescriptor,
-  shaderStore: ShaderStore,
-  pipelineLayout: GPUPipelineLayout,
+  descriptor:         PipelineDescriptor,
+  shaderStore:        ShaderStore,
+  pipelineLayouts:    PipelineLayoutState,
   presentationFormat: GPUTextureFormat,
-  device: GPUDevice): GPURenderPipeline {
+  device:             GPUDevice): GPURenderPipeline {
 
   if(!(descriptor.vertexShader in shaderStore))
     throw new Error(`Vertex shader ${descriptor.vertexShader} not found for pipeline ${descriptor.name}.`)
   if(!(descriptor.fragmentShader in shaderStore)) 
     throw new Error(`Fragment shader ${descriptor.fragmentShader} not found for pipeline ${descriptor.name}.`)
       
-  return createPipeline(
+  return createForwardRenderPipeline(
     descriptor.name, 
     shaderStore[descriptor.vertexShader], 
     shaderStore[descriptor.fragmentShader], 
-    pipelineLayout, 
+    pipelineLayouts, 
     presentationFormat, 
     device,
     descriptor.depthWrite,

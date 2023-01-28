@@ -4,17 +4,29 @@ SceneGraph pipeline.
 
 Pipeline layout
 
-Bind group 0: Default
+Bind group 0: Geometry and illumination
+Used for shading and depth-only passes.
   
   SLOT  NAME      TYPE                      VISIBILITY       DESCRIPTION
-     0  uniform   buffer/uniform            vertex,fragment  Basic uniforms
-     1  lighting  buffer/uniform            vertex,fragment  Light source data
-     2  material  buffer/read-only-storage  vertex,fragment  Material data   
-     3  instance  buffer/read-only-storage  vertex,fragment  Instance data
-     4  atlas     buffer/read-only-storage  vertex,fragment  Atlas metadata
-     5  sampler   sampler/filtering         fragment         Texture sampler
-     6  textures  texture/2d-array          fragment         Texture atlas
+     0  uniform   buffer/uniform            vertex,fragment  Basic uniforms 
+     1  instance  buffer/read-only-storage  vertex,fragment  Instance data
+     2  lighting  buffer/read-only-storage  vertex,fragment  Light source data
 
+Bind group 1: Materials
+Used for shading and depth-only passes.
+  
+  SLOT  NAME      TYPE                      VISIBILITY       DESCRIPTION
+     0  material  buffer/read-only-storage  vertex,fragment  Material data
+     1  atlas     buffer/read-only-storage  vertex,fragment  Atlas metadata
+     2  sampler   sampler/filtering         fragment         Texture sampler
+     3  textures  texture/2d-array          fragment         Texture atlas
+
+Bind group 2: Shadow maps
+Used for shading passes only.
+  
+  SLOT  NAME      TYPE                      VISIBILITY       DESCRIPTION
+     0  shadow    texture/2d-array          fragment         Shadow map atlas
+     
 
 Vertex attributes
 

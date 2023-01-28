@@ -17,11 +17,11 @@ const METADATA_RECORD_SIZE = 24; // Size of each metadata record in bytes (4 flo
 
 /** Create a new texture atlas. */
 export function createAtlas(
-    capacity: number,
-    size: [number, number, number], // width, height, layers 
-    format: GPUTextureFormat,
+    capacity:  number,
+    size:      [number, number, number], // width, height, layers 
+    format:    GPUTextureFormat,
     mipLevels: number,
-    device: GPUDevice): Atlas {
+    device:    GPUDevice): Atlas {
 
   const layerSize: [number, number] = [size[0], size[1]]
   const layerCount = size[2]
@@ -39,14 +39,14 @@ export function createAtlas(
   }
 
   const texture = device.createTexture({
-    size: [layerSize[0], layerSize[1], layerCount],
-    format,
-    usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+    size:          [layerSize[0], layerSize[1], layerCount],
+    format:        format,
+    usage:         GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     mipLevelCount: mipLevels,
   })
 
   const metadataBuffer = device.createBuffer({
-    size: capacity * 4 * 4,
+    size:  capacity * 4 * 4,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   })
 

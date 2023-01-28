@@ -1,64 +1,9 @@
-/** scene.ts - Low-level scene management and rendering. */
+/** Pipeline builder functions */
 
 import {mat4} from "gl-matrix"
-import type {Atlas, Mat4, ShaderStore} from "./types.js"
+import type {Atlas, Mat4, PipelineLayoutState, ShaderStore} from "./types.js"
 import {UNIFORM_BUFFER_FLOATS, UNIFORM_BUFFER_SIZE, VERTEX_SIZE} from "./constants.js"
 
-
-// Really, this should be a build-time constant. But we can't do that because
-// `GPUShaderStage` will be undefined on browsers that don't support WebGPU,
-// which will throw an error as soon the file is imported, and we need to
-// handle that case gracefully.
-let bindGroupLayoutDescriptor: GPUBindGroupLayoutDescriptor = null
-
-export function getBindGroupLayoutDescriptor(): GPUBindGroupLayoutDescriptor {
-  if(bindGroupLayoutDescriptor)
-    return bindGroupLayoutDescriptor
-  bindGroupLayoutDescriptor = {
-    label: 'main-bind-group-layout',
-    entries: [{
-      // General uniforms
-      binding: 0, 
-      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-      buffer: { type: 'uniform' },
-    }, {
-      // Lighting uniforms
-      binding: 1, 
-      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-      buffer: { type: 'read-only-storage' },
-    }, { 
-      // Materials data
-      binding: 2, 
-      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-      buffer: { type: 'read-only-storage' },
-    }, { 
-      // Instance data
-      binding: 3, 
-      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-      buffer: { type: 'read-only-storage' },
-    }, {
-      // Atlas metadata
-      binding: 4, 
-      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-      buffer: { type: 'read-only-storage' },
-    }, {
-      // Sampler
-      binding: 5, 
-      visibility: GPUShaderStage.FRAGMENT,
-      sampler: { type: 'filtering' },
-    }, {
-      // Atlas texture    
-      binding: 6,
-      visibility: GPUShaderStage.FRAGMENT,
-      texture: { 
-        sampleType: 'float', 
-        viewDimension: '2d-array', 
-        multisampled: false 
-      },
-    }]
-  }
-  return bindGroupLayoutDescriptor
-}
 
 /** Initialise the global uniform buffer. */
 export function createMainUniformBuffer(device: GPUDevice): GPUBuffer {
@@ -92,43 +37,158 @@ export function setProjectionMatrix(projectionMatrix: Mat4, buffer: GPUBuffer, d
   device.queue.writeBuffer(buffer, 64, new Float32Array(projectionMatrix))
 }
 
-export function createMainBindGroupLayout(device: GPUDevice): GPUBindGroupLayout {
-  return device.createBindGroupLayout(getBindGroupLayoutDescriptor())
+/** Setup Ratite's basic pipeline layouts. */
+export function createPipelineLayouts(device: GPUDevice): PipelineLayoutState {
+  const geometryBindGroupLayout = device.createBindGroupLayout({
+    label: 'geometry-bind-group-layout',
+    entries: [{
+      // General uniforms
+      binding: 0, 
+      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+      buffer: { type: 'uniform' },
+    }, { 
+      // Instance data
+      binding: 1, 
+      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+      buffer: { type: 'read-only-storage' },
+    }, {
+      // Lighting uniforms
+      binding: 2, 
+      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+      buffer: { type: 'read-only-storage' },
+    }]
+  })
+  const materialsBindGroupLayout = device.createBindGroupLayout({
+    label: 'materials-bind-group-layout',
+    entries: [{ 
+      // Materials data
+      binding: 0, 
+      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+      buffer: { type: 'read-only-storage' },
+    }, {
+      // Atlas metadata
+      binding: 1, 
+      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+      buffer: { type: 'read-only-storage' },
+    }, {
+      // Sampler
+      binding: 2, 
+      visibility: GPUShaderStage.FRAGMENT,
+      sampler:    { type: 'filtering' },
+    }, {
+      // Atlas texture    
+      binding: 3,
+      visibility: GPUShaderStage.FRAGMENT,
+      texture: { 
+        sampleType:    'float', 
+        viewDimension: '2d-array', 
+        multisampled:  false 
+      },
+    }]
+  })
+  const shadowMapBindGroupLayout = device.createBindGroupLayout({
+    label: 'shadow-map-bind-group-layout',
+    entries: [{
+      // Array texture    
+      binding: 0,
+      visibility: GPUShaderStage.FRAGMENT,
+      texture: { 
+        sampleType:    'float', 
+        viewDimension: '2d-array'
+      },
+    }]
+  })
+  const forwardRenderPipelineLayout = device.createPipelineLayout({
+    label: 'forward-render-pipeline-layout',
+    bindGroupLayouts: [
+      geometryBindGroupLayout,
+      materialsBindGroupLayout,
+      shadowMapBindGroupLayout,
+    ],
+  })
+  const depthPassPipelineLayout = device.createPipelineLayout({
+    label: 'depth-pass-pipeline-layout',
+    bindGroupLayouts: [
+      geometryBindGroupLayout,
+      materialsBindGroupLayout,
+    ],
+  })
+  return {
+    geometryBindGroupLayout,
+    materialsBindGroupLayout,
+    shadowMapBindGroupLayout,
+    forwardRenderPipelineLayout,
+    depthPassPipelineLayout,
+  }
 }
 
-export function createBindGroup( 
-  label:           string,
-  layout:          GPUBindGroupLayout,
+/** Create a geometry bind group. */
+export function createGeometryBindGroup(
   uniformBuffer:   GPUBuffer,
+  instanceBuffer:  GPUBuffer,
   lightingBuffer:  GPUBuffer,
+  layouts:         PipelineLayoutState,
+  device:          GPUDevice): GPUBindGroup {
+
+  return device.createBindGroup({
+    label: 'geometry-bind-group', 
+    layout: layouts.geometryBindGroupLayout,
+    entries: [
+      { binding: 0, resource: { buffer: uniformBuffer  } },
+      { binding: 1, resource: { buffer: instanceBuffer } }, 
+      { binding: 2, resource: { buffer: lightingBuffer } },
+    ]
+  })
+}
+
+/** Create a materials bind group. */
+export function createMaterialsBindGroup( 
   materialsBuffer: GPUBuffer,
-  storageBuffer:   GPUBuffer,
   atlas:           Atlas,
   sampler:         GPUSampler,
+  layouts:         PipelineLayoutState,
   device:          GPUDevice): GPUBindGroup {
 
   const textureView = atlas.texture.createView({
-    label:           `${label}::texture-view`,
+    label:           'materials-bind-group-texture-view',
     format:          atlas.format,
     dimension:       '2d-array',
     arrayLayerCount: atlas.layerCount,
   })
-  
-  const bindGroup = device.createBindGroup({
-    label, layout,
+  return device.createBindGroup({
+    label: 'materials-bind-group',
+    layout: layouts.materialsBindGroupLayout,
     entries: [
-      { binding: 0, resource: { buffer: uniformBuffer } },
-      { binding: 1, resource: { buffer: lightingBuffer } },
-      { binding: 2, resource: { buffer: materialsBuffer } },
-      { binding: 3, resource: { buffer: storageBuffer } }, 
-      { binding: 4, resource: { buffer: atlas.metadataBuffer } },
-      { binding: 5, resource: sampler }, 
-      { binding: 6, resource: textureView },
+      { binding: 0, resource: { buffer: materialsBuffer } },
+      { binding: 1, resource: { buffer: atlas.metadataBuffer } },
+      { binding: 2, resource: sampler }, 
+      { binding: 3, resource: textureView },
     ]
   })
-  return bindGroup
 }
 
+/** Create a shadow map bind group. */
+export function createShadowMapBindGroup( 
+  texture:         GPUTexture,
+  layouts:         PipelineLayoutState,
+  device:          GPUDevice): GPUBindGroup {
+    
+  const textureView = texture.createView({
+    label:           'materials-bind-group-texture-view',
+    format:          texture.format,
+    dimension:       '2d-array',
+    arrayLayerCount: texture.depthOrArrayLayers,
+  })
+  return device.createBindGroup({
+    label: 'shadow-map-bind-group',
+    layout: layouts.shadowMapBindGroupLayout,
+    entries: [
+      { binding: 0, resource: textureView },
+    ]
+  })
+}
+
+/** Create a sampler for the main texture atlas. */
 export function createMainSampler(device: GPUDevice): GPUSampler {
   return device.createSampler({
     label:         'main-sampler',
@@ -140,22 +200,12 @@ export function createMainSampler(device: GPUDevice): GPUSampler {
   })
 }
 
-/** Create the pipeline layout. */
-export function createMainPipelineLayout(
-    bindGroupLayout: GPUBindGroupLayout,
-    device:          GPUDevice): GPUPipelineLayout {
-  return device.createPipelineLayout({
-    label: 'main-pipeline-layout',
-    bindGroupLayouts: [bindGroupLayout],
-  })
-}
-
-/** Create a pipeline object with a given layout. */
-export function createPipeline(
+/** Create a pipeline object for forward rendering. */
+export function createForwardRenderPipeline(
   name:               string,
   vertexShader:       GPUShaderModule,
   fragShader:         GPUShaderModule,
-  layout:             GPUPipelineLayout,
+  layouts:            PipelineLayoutState,
   presentationFormat: GPUTextureFormat,
   device:             GPUDevice,
   enableDepthBuffer:  boolean = true,
@@ -163,7 +213,7 @@ export function createPipeline(
 
   const pipeline = device.createRenderPipeline({
     label: name,
-    layout,
+    layout: layouts.forwardRenderPipelineLayout,
     vertex: {
       module: vertexShader,
       entryPoint: 'main',

@@ -49,11 +49,11 @@ struct AtlasData {
 }
 
 @group(0) @binding(0) var<uniform> uniforms:     Uniforms;
-@group(0) @binding(1) var<storage> lighting:     Lighting;
-@group(0) @binding(2) var<storage> materialData: MaterialData;
-@group(0) @binding(4) var<storage> atlasData:    AtlasData;
-@group(0) @binding(5) var          mySampler:    sampler;
-@group(0) @binding(6) var          atlas:        texture_2d_array<f32>;
+@group(0) @binding(2) var<storage> lighting:     Lighting;
+@group(1) @binding(0) var<storage> materialData: MaterialData;
+@group(1) @binding(1) var<storage> atlasData:    AtlasData;
+@group(1) @binding(2) var          mySampler:    sampler;
+@group(1) @binding(3) var          atlas:        texture_2d_array<f32>;
 
 
 fn attenuate(dist: f32, attenuation: vec4<f32>) -> f32 {
@@ -104,26 +104,6 @@ fn main(
   var diffuse  = vec3<f32>(0);
   var specular = vec3<f32>(0);
   var emissive = material.emissive.rgb;
-  //for (var i:u32 = 0; i < lighting.count; i = i+1) {
-  //  let light     = lighting.data[i];
-  //  let path      = light.position.xyz - position;
-  //  let lightDir  = normalize(path);
-  //  let dist      = length(path);
-  //  let level     = attenuate(dist, light.attenuation);
-  //  
-  //  if(material.ambient.a > 0 && light.ambient.a > 0) {
-  //    ambient += light.ambient.rgb * material.ambient.rgb * level;
-  //  }
-  //  if(materialDiffuse.a > 0 && light.diffuse.a > 0) {
-  //    let diff = max(dot(lightDir, normal), 0);
-  //    diffuse += light.diffuse.rgb * materialDiffuse.rgb * diff * level;
-  //  }
-  //  if(material.specular.a > 0 && light.specular.a > 0 && shininess > 0) {
-  //    let halfway = normalize(lightDir + viewDir);
-  //    let spec = pow(max(dot(normal, halfway), 0), shininess);
-  //    specular += light.specular.rgb * material.specular.rgb * spec * level;
-  //  }
-  //}
   for (var i:u32 = 0; i < lighting.count; i = i+1) {
     let light      = lighting.data[i];
     var lightLevel = 0.0;

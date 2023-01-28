@@ -11,7 +11,11 @@
  * uploaded to the GPU in the lighting uniform buffer. Since this transform
  * is dependent on the view matrix for the frame being rendered, none of the
  * functions here do any GPU work except for `updateLightingBuffer`, which
- * writes the entire buffer at once. 
+ * writes the entire buffer at once.
+ * 
+ * Light sources may also be shadow casters. To avoid tight coupling between
+ * this lighting system and any particular shadow system, no shadow-related
+ * functionality or associations are provided here. 
  */
 
 import type  {LightingState, LightSource, LightSourceDescriptor, Vec4} from './types'

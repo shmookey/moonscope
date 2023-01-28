@@ -25,7 +25,7 @@ struct InstanceData {
 }
 
 @group(0) @binding(0) var<uniform> uniforms:     Uniforms;
-@group(0) @binding(3) var<storage> instanceData: InstanceData;
+@group(0) @binding(1) var<storage> instanceData: InstanceData;
 
 @vertex
 fn main(
