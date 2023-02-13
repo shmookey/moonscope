@@ -26,6 +26,7 @@ export function formatErrorType(type: ErrorType): string {
     case 'OutOfResources':   return 'Out of Resources'
     case 'UnknownError':     return 'Unknown Error'
     case 'WebGPUInitFailed': return 'Failed to initialise WebGPU'
+    case 'NotFound':         return 'Resource Not Found'
     default:                 return 'Unknown Error'
   }
 }
@@ -40,6 +41,8 @@ export function explainError(type: ErrorType): string {
     case 'InternalError':
       explanation = 'An internal error occurred in the Ratite renderer. This is a bug in Ratite. Please report it.'
       break
+    case 'NotFound':
+      explanation = 'The application requested a resource that does not exist.'
   }
   return explanation
 }

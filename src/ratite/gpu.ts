@@ -17,7 +17,7 @@ export async function initGPU(canvas: HTMLCanvasElement | OffscreenCanvas): Prom
   })
 
   const device = await adapter.requestDevice({
-    //requiredFeatures: ['shader-f16'],
+    requiredFeatures: ['depth-clip-control'],
   })
   if(device == null)
     throw new RatiteError('WebGPUInitFailed', 'requestDevice returned null')

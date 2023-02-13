@@ -2,7 +2,7 @@
 
 import type {MeshVertex, Vec2, Vec3, XMesh} from "../types"
 import type { Polyhedron, Triangle } from "./types"
-import {setTextures, v3normalize, v3sub, v3add, v3mid} from "./mesh.js"
+import {setTextures, v3normalize, v3sub, v3add, v3mid, getBoundingVolume} from "./mesh.js"
 import {Float32x2, Float32x3, Snorm16x4, Vertex} from "../vertex.js"
 import {latLonToUnitVec, unitVecToLatLon} from "../common.js"
 const { atan2, sin, cos, tan, sqrt, PI } = Math
@@ -108,14 +108,16 @@ export function polyhedronMesh(
 
     return Vertex(position, uv, normal, tangent, bitangent, textures)
   }))
+  const bounds = getBoundingVolume(vertices)
   return {
-    id:          0,
-    name:        'polyhedron',
-    vertexCount: vertices.length,
-    vertices:    vertices,
-    indexCount:  vertices.length,
-    indices:     new Array(vertices.length).fill(0).map((_,i) => i),
-    material:    material,
+    id:             0,
+    name:           'polyhedron',
+    vertexCount:    vertices.length,
+    vertices:       vertices,
+    indexCount:     vertices.length,
+    indices:        new Array(vertices.length).fill(0).map((_,i) => i),
+    material:       material,
+    boundingVolume: bounds,
   }
 }
 

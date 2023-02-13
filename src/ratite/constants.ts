@@ -40,3 +40,6 @@ export const MATERIAL_RECORD_OFFSET_EMISSIVE  =  48  // Byte offset of material 
 export const MATERIAL_RECORD_OFFSET_TEXTURES  =  64  // Byte offset of material textures
 export const MATERIAL_RECORD_OFFSET_SHININESS =  80  // Byte offset of material shininess
 
+// Shadow map records
+export const SHADOW_MAP_RECORD_SIZE           =  64  // Byte length of shadow map record uniform
+export const SHADOW_MAP_RECORD_OFFSET_MATRIX  =   0  // Byte offset of shadow map matrix

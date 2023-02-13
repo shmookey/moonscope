@@ -1,4 +1,5 @@
 import type { Vec2, Vec3, XMesh, MeshVertex } from '../types'
+import { getBoundingVolume } from './mesh'
 
 type Vertex = {
   xy: Vec2,
@@ -176,14 +177,16 @@ function vertexToMeshVertex(vertex: Vertex): MeshVertex {
 /** Embed a 2D mesh in 3D space, with the XZ plane as the base. */
 export function embedMesh(mesh: Mesh2D): XMesh {
   const vertices = mesh.vertices.map(vertexToMeshVertex)
+  const bounds = getBoundingVolume(vertices)
   return {
-    vertices:    vertices, 
-    indices:     mesh.indices,
-    id:          0,
-    name:        '',
-    vertexCount: vertices.length,
-    indexCount:  mesh.indices.length,
-    material:    'default',
+    vertices:       vertices, 
+    indices:        mesh.indices,
+    id:             0,
+    name:           '',
+    vertexCount:    vertices.length,
+    indexCount:     mesh.indices.length,
+    material:       'default',
+    boundingVolume: bounds,
   }
 }
 

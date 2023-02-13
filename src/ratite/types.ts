@@ -22,13 +22,14 @@ export type MeshVertex = {
 
 /** Extended mesh format. Used for offline storage. */
 export type XMesh = {
-  id:          number,        // Mesh resource ID
-  name:        string,        // Human-readable name
-  vertexCount: number,        // Number of vertices in mesh
-  indexCount:  number,        // Number of indices in mesh
-  vertices:    MeshVertex[],  // Vertex data
-  indices:     number[],      // Indices into vertex array
-  material:    string,        // Material name
+  id:             number,        // Mesh resource ID
+  name:           string,        // Human-readable name
+  vertexCount:    number,        // Number of vertices in mesh
+  indexCount:     number,        // Number of indices in mesh
+  vertices:       MeshVertex[],  // Vertex data
+  indices:        number[],      // Indices into vertex array
+  material:       string,        // Material name
+  boundingVolume: BoundingVolume // Bounding volume
 }
 
 
@@ -50,14 +51,15 @@ export type TextureResourceDescriptor = {
 }
 
 export type MeshResource = {
-  id:            number,         // Mesh resource ID
-  name:          string,         // Human-readable name
-  vertexCount:   number,         // Number of vertices in mesh
-  indexCount:    number,         // Number of indices in mesh
-  vertexPointer: number,         // Byte offset location in vertex buffer
-  indexPointer:  number,         // Byte offset location in index buffer
-  indexOffset:   number,         // Index offset for this mesh
-  material:      string | null,  // Material name, if any
+  id:             number,         // Mesh resource ID
+  name:           string,         // Human-readable name
+  vertexCount:    number,         // Number of vertices in mesh
+  indexCount:     number,         // Number of indices in mesh
+  vertexPointer:  number,         // Byte offset location in vertex buffer
+  indexPointer:   number,         // Byte offset location in index buffer
+  indexOffset:    number,         // Index offset for this mesh
+  material:       string | null,  // Material name, if any
+  boundingVolume: BoundingVolume // Bounding volume
 }
 
 /** Mesh resource descriptor. 
@@ -66,19 +68,20 @@ export type MeshResource = {
  * with descriptor fields taking precedence.
  */
 export type MeshResourceDescriptor = {
-  id:          number,           // Mesh resource ID
-  name:        string,           // Human-readable name
-  vertexCount: number,           // Number of vertices in mesh
-  indexCount:  number,           // Number of indices in mesh
-  src?:        string,           // Path to file containing mesh data
-  srcType?:    string,           // 'json' or 'bin'
-  srcOffset:   number,           // Byte offset in binary source
-  vertices?:   MeshVertex[],     // Optionally, vertex data can be provided directly
-  indices?:    number[],         // Optionally, index data can be provided directly 
-  texRemap?:   TextureRemapping, // Texture IDs remapping
-  prescale?:   number,           // Scale factor applied to vertex positions
-  prescaleUV?: number,           // Scale factor applied to vertex UVs
-  material?:   string,           // Material name
+  id:              number,           // Mesh resource ID
+  name:            string,           // Human-readable name
+  vertexCount:     number,           // Number of vertices in mesh
+  indexCount:      number,           // Number of indices in mesh
+  src?:            string,           // Path to file containing mesh data
+  srcType?:        string,           // 'json' or 'bin'
+  srcOffset:       number,           // Byte offset in binary source
+  vertices?:       MeshVertex[],     // Optionally, vertex data can be provided directly
+  indices?:        number[],         // Optionally, index data can be provided directly 
+  texRemap?:       TextureRemapping, // Texture IDs remapping
+  prescale?:       number,           // Scale factor applied to vertex positions
+  prescaleUV?:     number,           // Scale factor applied to vertex UVs
+  material?:       string,           // Material name
+  boundingVolume?: BoundingVolume // Bounding volume
 }
 
 export type TextureRemapping = {
@@ -104,17 +107,25 @@ export type PipelineDescriptor = {
  */
 export type MaterialResourceDescriptor = MaterialDescriptor
 
+/** Meta-material resource descriptor. 
+ * 
+ * For now, this is just a meta-material descriptor. Loading materials from a
+ * file is not yet supported.
+ */
+export type MetaMaterialResourceDescriptor = MetaMaterialDescriptor
+
 export type ShaderStore   = { [name: string]: GPUShaderModule }
 export type PipelineStore = { [name: string]: GPURenderPipeline }
 
 export type ResourceBundleDescriptor = {
-  label?:    string,                       // Human-readable name for debugging
-  meshes:    MeshResourceDescriptor[],     // Mesh resources
-  textures:  TextureResourceDescriptor[],  // Texture resources
-  shaders:   ShaderResourceDescriptor[],   // Shader resources
-  pipelines: PipelineDescriptor[],         // Render pipelines
-  scenes:    SceneGraphDescriptor[],       // Scene descriptions
-  materials: MaterialResourceDescriptor[], // Material resources
+  label?:        string,                           // Human-readable name for debugging
+  meshes:        MeshResourceDescriptor[],         // Mesh resources
+  textures:      TextureResourceDescriptor[],      // Texture resources
+  shaders:       ShaderResourceDescriptor[],       // Shader resources
+  pipelines:     PipelineDescriptor[],             // Render pipelines
+  scenes:        SceneGraphDescriptor[],           // Scene descriptions
+  materials:     MaterialResourceDescriptor[],     // Material resources
+  metaMaterials: MetaMaterialResourceDescriptor[], // Metamaterial resources
 }
 
 export type ResourceBundle = {
@@ -123,6 +134,7 @@ export type ResourceBundle = {
   textures:      TextureResource[],      // Texture resources
   scenes:        SceneGraph[],           // Scene graphs
   materials:     Material[],             // Material resources
+  metaMaterials: MetaMaterial[],         // Metamaterial resources
 }
 
 /** Storage type for geometry (mesh) data.
@@ -198,10 +210,13 @@ export type Region = [number, number, number, number]  // x, y, width, height
 //    INSTANCE MANAGER
 //
 
+
 /** State object for the instance allocator. */
 export type InstanceAllocator = {
   storageBuffer:       GPUBuffer,            // Storage buffer object
   instanceBuffer:      GPUBuffer,            // Instance buffer object
+  storageData:         ArrayBuffer,          // Storage buffer data
+  instanceData:        ArrayBuffer,          // Instance buffer data
   nextAllocationId:    number,               // Next allocation ID to be assigned
   nextInstanceId:      number,               // Next instance ID to be assigned
   nextStorageSlot:     number,               // Position in storage buffer for next instance, after vacated slots
@@ -230,7 +245,7 @@ export type InstanceRecord = {
   allocationId:    number,        // ID of mesh allocation
   instanceSlot:    number | null, // Position in instance buffer, if active, otherwise null
   storageSlot:     number,        // Uniform index for shaders
-  buffer:          ArrayBuffer,   // Local copy of instance data
+  //buffer:          ArrayBuffer,   // Local copy of instance data
 }
 
 /** Instance data shared with shaders. */
@@ -239,9 +254,11 @@ export type InstanceData = {
   materialId:   number, // Material ID
 }
 
+
 //
 //    CAMERA TYPES
 //
+
 
 /** Camera type.
  * 
@@ -274,6 +291,7 @@ export type FirstPersonCamera = {
 //    To be removed / replaced
 //
 
+
 export type Scene = {
   skybox:            SkyboxState,
   nodes:             Node[],
@@ -295,18 +313,20 @@ export type SkyboxState = {
  * draw call.
  */
 export type Model = {
-  id:           number,  // Model ID
-  name:         string,  // Human-readable name for convenient lookup
-  meshId:       number,  // ID of mesh resource
-  allocationId: number,  // ID of instance allocation
-  drawCallId:   number,  // ID of draw call
-  pipelineName: string,  // Name of pipeline to use for rendering
+  id:           number,       // Model ID
+  name:         string,       // Human-readable name for convenient lookup
+  meshId:       number,       // ID of mesh resource
+  allocationId: number,       // ID of instance allocation
+  drawCallId:   number,       // ID of draw call
+  pipelineName: string,       // Name of pipeline to use for rendering
+  metaMaterial: MetaMaterial, // Meta-material to use for rendering
 }
 
 
 //
 //    SCENE GRAPH
 //
+
 
 /** Scene graph backend.
  * 
@@ -360,7 +380,8 @@ export type SceneGraph = {
   label?:             string,
   root:               Node,
   nodes:              Node[],
-  drawCalls:          DrawCallDescriptor[],
+  forwardDrawCalls:   DrawCallDescriptor[],
+  depthPassDrawCalls: DrawCallDescriptor[],
   models:             { [name: string]: Model },
   renderer:           Renderer,
   nextDrawCallId:     number,
@@ -370,10 +391,8 @@ export type SceneGraph = {
   uniformFloats:      Float32Array,
   uniformView:        DataView,
   lightingState:      LightingState,
-  shadowMapState:     ShadowMapState,
   materialsBindGroup: GPUBindGroup,
   geometryBindGroup:  GPUBindGroup,
-  shadowMapBindGroup: GPUBindGroup,
 }
 
 /** Scene node. */
@@ -384,13 +403,16 @@ export type Node = ModelNode
 
 /** Base node type. */
 export interface BaseNode {
-  name?:     string,        // Human-readable name for convenient lookup
-  nodeType:  NodeType,      // Node type
-  transform: Mat4,          // Local transform matrix
-  parent:    Node | null,   // Parent node, if part of a tree
-  root:      Node | null,   // Root node, if attached to scene
-  children:  Node[],        // Child nodes
-  visible:   boolean,       // Visibility toggle
+  name?:           string,         // Human-readable name for convenient lookup
+  nodeType:        NodeType,       // Node type
+  transform:       Mat4,           // Local transform matrix
+  parent:          Node | null,    // Parent node, if part of a tree
+  root:            Node | null,    // Root node, if attached to scene
+  children:        Node[],         // Child nodes
+  visible:         boolean,        // Visibility toggle
+  dirty:           number,         // Dirty flags
+  _boundingVolume: BoundingVolume, // Temporary storage of bounding volume
+  _worldTransform: Mat4,           // Temporary storage of world transform
 }
 
 /** Light source node.
@@ -438,36 +460,50 @@ export type View = {
   projection: Mat4,
   viewMatrix: Mat4,
   node:       CameraNode | LightSourceNode | null,
+  shadowMap:  ShadowMap | null,
+}
+
+export type DirtyFlag = number
+
+/** Axis-aligned bounding volume. */
+export type BoundingVolume = {
+  min: Vec3,
+  max: Vec3,
 }
 
 //
 //    SCENE GRAPH - DESCRIPTORS
 //
 
+
 export type SceneGraphDescriptor = {
   name:    string,
   root?:   NodeDescriptor,
   models?: ModelDescriptor[],
-  views?:  ViewMetaDescriptor[],
+  views?:  ViewDescriptor[],
 }
 
-export type ViewMetaDescriptor = {
+export type ViewDescriptor = {
   name:       string,
-  projection: ViewDescriptor
+  type:       ViewType,
+  projection: ProjectionDescriptor
 }
+
+/** View type. */
+export type ViewType = 'camera' | 'light'
 
 /** Scene view descriptor. */
-export type ViewDescriptor = 
-  PerspectiveViewDescriptor |
-  OrthographicViewDescriptor
+export type ProjectionDescriptor = 
+  PerspectiveProjectionDescriptor |
+  OrthographicProjectionDescriptor
 
-export type BaseViewDescriptor = {
+export type BaseProjectionDescriptor = {
   name?: string,
   type:  'perspective' | 'orthographic',
 }
 
 /** Perspective camera node descriptor. */
-export interface PerspectiveViewDescriptor extends BaseViewDescriptor {
+export interface PerspectiveProjectionDescriptor extends BaseProjectionDescriptor {
   type:   'perspective',
   fovy:   number,
   aspect: number | 'auto',
@@ -476,7 +512,7 @@ export interface PerspectiveViewDescriptor extends BaseViewDescriptor {
 }
 
 /** Orthographic camera node descriptor. */
-export interface OrthographicViewDescriptor extends BaseViewDescriptor {
+export interface OrthographicProjectionDescriptor extends BaseProjectionDescriptor {
   type:   'orthographic',
   left:   number,
   right:  number,
@@ -516,6 +552,7 @@ export interface LightSourceNodeDescriptor extends BaseNodeDescriptor {
   specular?:    Vec4,
   cone?:        Vec2,
   castShadows?: boolean,
+  view?:        string,
 }
 
 /** Model node, a type of leaf node. */
@@ -555,7 +592,8 @@ export interface MatrixDescriptor extends TransformDescriptorBase {
 export interface TranslationRotationScaleDescriptor extends TransformDescriptorBase {
   type:         'trs',
   translation?: [number, number, number],         // position vector
-  rotation?:    [number, number, number, number], // rotation quaternion
+  rotateQuat?:  [number, number, number, number], // rotation quaternion
+  rotateEuler?: [number, number, number],         // rotation around xyz axis, in that order, degrees
   scale?:       [number, number, number],         // scaling vector
 }
 
@@ -570,6 +608,7 @@ export type ModelDescriptor = {
   mesh:         string, // Name of mesh resource
   pipeline:     string, // Name of pipeline to use for rendering
   maxInstances: number, // Maximum number of instances
+  metaMaterial: string, // Name of meta-material to use for rendering
 }
 
 
@@ -614,6 +653,8 @@ export type Renderer = {
   shaders:             ShaderStore,
   msaaCount:           number,
   materials:           MaterialState,
+  metaMaterials:       MetaMaterialState,
+  shadowMapper:        ShadowMapperState,
 }
 
 /** Describes rendering work to be done.
@@ -634,6 +675,7 @@ export type DrawCallDescriptor = {
   indexPointer:    number,
   indexCount:      number,
   indexOffset:     number,
+  metaMaterial:    MetaMaterial,
 }
 
 export type GPUContext = {
@@ -737,16 +779,17 @@ export type LightingState = {
 //
 
 export type Material = {
-  id:          number,         // Unique ID for material
-  name:        string,         // Human-readable name
-  slot:        number | null,  // Buffer slot for active material
-  ambient:     Vec4,           // Ambient colour
-  diffuse:     Vec4,           // Diffuse colour
-  specular:    Vec4,           // Specular colour
-  emissive:    Vec4,           // Emissive colour
-  shininess:   number,         // Shininess coefficient
-  textures:    Vec4,           // Texture IDs for colour, normal, specular, emissive
-  usage:       number,         // Reference count
+  id:           number,         // Unique ID for material
+  name:         string,         // Human-readable name
+  metaMaterial: MetaMaterial,   // Meta-material
+  slot:         number | null,  // Buffer slot for active material
+  ambient:      Vec4,           // Ambient colour
+  diffuse:      Vec4,           // Diffuse colour
+  specular:     Vec4,           // Specular colour
+  emissive:     Vec4,           // Emissive colour
+  shininess:    number,         // Shininess coefficient
+  textures:     Vec4,           // Texture IDs for colour, normal, specular, emissive
+  usage:        number,         // Reference count
 }
 
 export type MaterialTexturesDescriptor = {
@@ -757,26 +800,101 @@ export type MaterialTexturesDescriptor = {
 }
 
 export type MaterialDescriptor = {
-  name?:        string,                     // Human-readable name
-  ambient?:     Vec4,                       // Ambient colour
-  diffuse?:     Vec4,                       // Diffuse colour
-  specular?:    Vec4,                       // Specular colour
-  emissive?:    Vec4,                       // Emissive colour
-  shininess?:   number,                     // Shininess coefficient
-  textures?:    MaterialTexturesDescriptor, // Texture names for colour, normal, specular, emissive
+  name?:         string,                     // Human-readable name
+  ambient?:      Vec4,                       // Ambient colour
+  diffuse?:      Vec4,                       // Diffuse colour
+  specular?:     Vec4,                       // Specular colour
+  emissive?:     Vec4,                       // Emissive colour
+  shininess?:    number,                     // Shininess coefficient
+  textures?:     MaterialTexturesDescriptor, // Texture names for colour, normal, specular, emissive
+  metaMaterial?: string,                     // Name of meta-material
 }
 
 export type MaterialState = {
-  materials:      Material[],  // List of materials indexed by ID
-  nextMaterialID: number,      // Next material ID to allocate
-  bufferCapacity: number,      // Maximum number of materials in buffer
-  bufferUsage:    number,      // Current number of materials in buffer
-  buffer:         GPUBuffer,   // Uniform buffer to store material data
-  bufferData:     ArrayBuffer, // Local copy of buffer data
-  device:         GPUDevice,   // GPU device context
-  slots:          Material[],  // List of active materials in slot order
-  atlas:          Atlas        // Texture atlas for material textures
+  materials:      Material[],        // List of materials indexed by ID
+  nextMaterialID: number,            // Next material ID to allocate
+  bufferCapacity: number,            // Maximum number of materials in buffer
+  bufferUsage:    number,            // Current number of materials in buffer
+  buffer:         GPUBuffer,         // Uniform buffer to store material data
+  bufferData:     ArrayBuffer,       // Local copy of buffer data
+  device:         GPUDevice,         // GPU device context
+  slots:          Material[],        // List of active materials in slot order
+  atlas:          Atlas              // Texture atlas for material textures
+  metaMaterials:  MetaMaterialState, // Meta-material state
 }
+
+/** Meta-material object.
+ * 
+ * A metamaterial defines a pipeline configuration and a set of shader programs
+ * which can be parameterised to produce a variety of different materials.
+ */
+export type MetaMaterial = {
+  id:          number,                 // Unique ID for metamaterial
+  name:        string,                 // Human-readable name
+  usage:       number,                 // Reference count
+  descriptor?: MetaMaterialDescriptor, // Descriptor object
+  layout:      StructureLayout,        // Layout of material uniform buffer
+  pipelines: {                         // Compiled render pipelines:
+    forward:   GPURenderPipeline,      //   Forward rendering pipeline
+    shadow:    GPURenderPipeline,      //   Shadow mapping pipeline
+  },
+} 
+
+/** Meta-material descriptor. */
+export type MetaMaterialDescriptor = {
+  name:              string,             // Human-readable name
+  alphaBlend:        boolean,            // Whether to enable alpha blending
+  depthTest?:        GPUCompareFunction, // Depth testing function (default: 'less')
+  depthWrite?:       boolean,            // Whether to enable depth writing (default: true)
+  cullMode?:         GPUCullMode,        // Culling mode (default: 'back')
+  frontFace?:        GPUFrontFace,       // Front face winding order (default: 'ccw')
+  shadowDepthWrite?: boolean,            // Whether to enable depth writing for shadow mapping (default: true)
+  shadowCullMode?:   GPUCullMode,        // Culling mode for shadow mapping (default: 'back')
+  layout:            StructureLayout,    // Layout of material uniform buffer
+  shaders: {                             // Names of shader programs:
+    forwardVertex:   ShaderName,         //   Vertex shader for forward rendering
+    forwardFragment: ShaderName,         //   Fragment shader for forward rendering
+    shadowVertex:    ShaderName,         //   Vertex shader for shadow mapping
+    shadowFragment:  ShaderName,         //   Fragment shader for shadow mapping
+  },
+}
+
+/** Shader name, comprising a module name and a function name. */
+export type ShaderName = [string, string]
+
+/** Layout of a GPU data structure, e.g. material uniform buffer. */
+export type StructureLayout = {
+  byteLength: number,  // Total size of structure in bytes, including padding
+  entries:    Entry[], // List of structure entries
+}
+
+/** Entry in a GPU data structure, e.g. material uniform buffer. */
+export type Entry = {
+  name:       string,     // Name of entry
+  byteOffset: number,     // Offset of entry in bytes
+  type:       EntryType,  // Type of entry
+}
+
+/** Type of a GPU data structure entry. */
+export type EntryType = 
+    'f32'   | 'u32'   | 'i32'
+  | 'f32x2' | 'u32x2' | 'i32x2'
+  | 'f32x3' | 'u32x3' | 'i32x3'
+  | 'f32x4' | 'u32x4' | 'i32x4'
+
+/** Metamaterial manager state. */
+export type MetaMaterialState = {
+  slots:              MetaMaterial[],            // List of metamaterials indexed by ID
+  metaMaterials:      Map<string,MetaMaterial>,  // Metamaterials by name
+  nextMetaMaterialID: number,                    // Next metamaterial ID to allocate
+  shaderStore:        ShaderStore,               // Shader store
+  pipelineLayouts:    PipelineLayoutState,       // Pipeline layout store
+  presentationFormat: GPUTextureFormat,          // Texture format for presentation
+  depthFormat:        GPUTextureFormat,          // Texture format for depth buffer
+  multisampleCount:   number,                    // Number of samples for multisampling
+  device:             GPUDevice,                 // GPU device context
+}
+
 
 //
 //    SHADOW MAPPING
@@ -794,30 +912,34 @@ export type MaterialState = {
  * matrix is derived from the configuration of the light source.
  */
 export type ShadowMap = {
-  id:          number,         // Unique ID for shadow map
-  light:       LightSource,    // Light source associated with shadow map
-  texture:     GPUTexture,     // Underlying texture resource
-  textureView: GPUTextureView, // View of this shadow map's layer
-  layer:       number,         // Layer in texture array
+  id:          number,                  // Unique ID for shadow map
+  slot:        number | null,           // Buffer slot for active shadow map
+  lightSource: LightSource,             // Light source associated with shadow map
+  texture:     GPUTexture,              // Underlying texture resource
+  textureView: GPUTextureView,          // View of this shadow map's layer
+  layer:       number,                  // Layer in texture array
+  renderPass:  GPURenderPassDescriptor, // Depth render pass descriptor
+  _matrix:     Mat4,                    // Light view matrix (cache only)
 }
 
-/** Shadow map manager state. */
-export type ShadowMapState = {
-  shadowMaps:      ShadowMap[],             // List of shadow maps indexed by ID
-  nextShadowMapID: number,                  // Next shadow map ID to allocate
-  texture:         GPUTexture,              // Underlying texture resource
-  capacity:        number,                  // Maximum number of shadow maps
-  usage:           number,                  // Current number of shadow maps
-  device:          GPUDevice,               // GPU device context
-  resolution:      [number, number],        // Resolution of shadow maps
-  format:          GPUTextureFormat,        // Format of shadow maps
-//  renderPass:      GPURenderPassDescriptor, // Depth render pass descriptor
-//  pipeline:        GPURenderPipeline,       // Depth render pipeline
-//  bindGroup:       GPUBindGroup,            // Depth render bind group
-  
+/** Shadow mapper state. */
+export type ShadowMapperState = {
+  slots:              ShadowMap[],             // List of shadow maps indexed by ID
+  nextShadowMapID:    number,                  // Next shadow map ID to allocate
+  texture:            GPUTexture,              // Underlying texture resource
+  capacity:           number,                  // Maximum number of shadow maps
+  usage:              number,                  // Current number of shadow maps
+  device:             GPUDevice,               // GPU device context
+  resolution:         [number, number],        // Resolution of shadow maps
+  format:             GPUTextureFormat,        // Format of shadow maps
+  storageBuffer:      GPUBuffer,               // Storage buffer for shadow map data
+  storageBufferData:  ArrayBuffer,             // Local copy of storage buffer data
+  storageBufferArray: Float32Array,           // Array view of storage buffer data
+  textureArrayView:   GPUTextureView,          // View of texture array
+  sampler:            GPUSampler,              // Sampler for shadow maps
+  bindGroup:          GPUBindGroup,            // Depth render bind group
+  bindGroupLayout:    GPUBindGroupLayout,      // Depth render bind group layout
 }
-
-
 
 
 //
@@ -834,3 +956,6 @@ export type ErrorType =
   | 'OutOfResources'      // Out of resources, e.g. too many objects.
   | 'UnknownError'        // All other errors.
   | 'WebGPUInitFailed'    // Failed to initialise WebGPU.
+  | 'NotFound'            // Resource not found.
+  | 'ResourceBusy'        // Resource is busy.
+

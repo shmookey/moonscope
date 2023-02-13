@@ -1,8 +1,9 @@
 /** universe.ts -- Celestial bodies and their orbits. */
 
 import type {Vec3, Quat, Node} from './ratite/types';
-import {vec3, mat4, quat} from '../node_modules/gl-matrix/esm/index.js'
+import {vec3, mat4, quat, glMatrix} from 'gl-matrix'
 import {random, randomUnitVec3, randomUnitQuat} from './util.js';
+glMatrix.setMatrixArrayType(Array)
 
 /** Celestial body. */
 export type Celestial  = {
@@ -47,7 +48,7 @@ const SUN: LocalBody = {
   radius: SUN_RADIUS,
   mass: 1.989e30,
   position: [0, 0, 0],
-  orientation: quat.create(),
+  orientation: quat.create() as Quat,
   angularVelocity: 0,
   orbitalRate: 0,
 }
@@ -57,7 +58,7 @@ const MOON: LocalBody = {
   radius: MOON_RADIUS,
   mass: 1,
   position: [0, 0, DIST_EARTH_MOON], // relative to earth
-  orientation: quat.create(),
+  orientation: quat.create() as Quat,
   angularVelocity: 0,
   orbitalRate: 1,
 }
@@ -67,7 +68,7 @@ const EARTH: LocalBody = {
   radius: EARTH_RADIUS,
   mass: 5.972e24,
   position: [0, 0, DIST_EARTH_SUN], // relative to sun
-  orientation: quat.create(),
+  orientation: quat.create() as Quat,
   angularVelocity: 1,
   orbitalRate: 0.1,
 }

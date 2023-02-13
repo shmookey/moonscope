@@ -1,7 +1,8 @@
 /** Types used in the moonscope app. */
 
-import { RatiteError } from "./ratite/error";
-import { CameraNode, ErrorType, GPUContext, Renderer, Scene, SceneGraph } from "./ratite/types"
+import type { DepthMapExporter } from "./ratite/debug/depth.js";
+import { RatiteError } from "./ratite/error.js";
+import type { CameraNode, ErrorType, GPUContext, Renderer, Scene, SceneGraph } from "./ratite/types"
 import type { Telescope } from "./telescope"
 
 //
@@ -10,12 +11,14 @@ import type { Telescope } from "./telescope"
 
 export type MessageType = 
   // Page to worker:
-    'init' | 'start' | 'stop' | 'input' | 'getState' |
+    'init' | 'start' | 'stop' | 'input' | 'getState' | 'debugWorker' |
+    'getDepthImage' |
   // Worker to page:
-    'ready' | 'info' | 'error' | 'started' | 'stopped' | 'response'
+    'ready' | 'info' | 'error' | 'started' | 'stopped' | 'response' 
 export type Message = 
     InitMessage | StartMessage | StopMessage | InputMessage | GetStateMessage |
-    InfoMessage | ErrorMessage | ReadyMessage | StartedMessage | StoppedMessage | ResponseMessage
+    InfoMessage | ErrorMessage | ReadyMessage | StartedMessage | StoppedMessage | ResponseMessage |
+    DebugWorkerMessage | GetDepthImageMessage
   
 
 
@@ -59,6 +62,18 @@ export interface InputMessage extends MessageBase {
 export interface GetStateMessage extends MessageBase {
   type: 'getState',            // Message type.
 }
+
+/** Debug worker. */
+export interface DebugWorkerMessage extends MessageBase {
+  type: 'debugWorker',            // Message type.
+}
+
+/** Get depth pass result image. */
+export interface GetDepthImageMessage extends MessageBase {
+  type: 'getDepthImage',            // Message type.
+  layer: number,                    // Layer to get.
+}
+
 
 /** Message sent from a worker to the page to provide status and performance information. */
 export interface InfoMessage extends MessageBase {
@@ -108,16 +123,18 @@ export interface StoppedMessage extends MessageBase {
 export type WorkerStatus = 'created' | 'running' | 'idle'
 
 export type WorkerState = {
-  canvas:       OffscreenCanvas,
-  gpu:          GPUContext,
-  sceneGraph:   SceneGraph,
-  legacyScene:  Scene,            // one day we will finally be rid of this 
-  renderer:     Renderer,
-  mainCamera:   CameraNode,
-  telescope:    Telescope,
-  status:       WorkerStatus,
-  fpsLimit:     number,           // Maximum FPS
-  gpuReady:     boolean,          // GPU is ready
+  canvas:           OffscreenCanvas,
+  gpu:              GPUContext,
+  sceneGraph:       SceneGraph,
+  legacyScene:      Scene,            // one day we will finally be rid of this 
+  renderer:         Renderer,
+  mainCamera:       CameraNode,
+  telescope:        Telescope,
+  status:           WorkerStatus,
+  fpsLimit:         number,           // Maximum FPS
+  gpuReady:         boolean,          // GPU is ready
+  depthMapExporter: DepthMapExporter,
+  universe:         any,              // Universe object
 
   // Move these out into a frame statistics module:
   currentFrame:        number,   // Current frame number
@@ -147,6 +164,7 @@ export type WorkerController = {
   worker:    Worker,
   listeners: {[type: string]: ((message: Message) => void)[]},
   nextId:    number, // Next message ID
+  callbacks: {[id: number]: (message: Message) => void},
 }
 
 

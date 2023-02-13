@@ -2,13 +2,14 @@ import type {
   ResourceBundleDescriptor, TextureResourceDescriptor, MeshResourceDescriptor,
   Atlas, ResourceBundle, TextureResource, MeshResource, MeshStore,
   TextureRemapping, ShaderStore, ShaderResourceDescriptor, PipelineDescriptor,
-  MeshVertex, Renderer, PipelineLayoutState
+  MeshVertex, Renderer, PipelineLayoutState, MetaMaterial
 } from "./types"
 import { addSubTexture, copyImageBitmapToSubTexture2, copyImageToSubTexture } from "./atlas.js"
 import {addMesh, getMeshById, serialiseVertices} from "./mesh.js"
 import {createForwardRenderPipeline} from "./pipeline.js"
 import {createSceneGraphFromDescriptor} from "./scene.js"
 import { applyMaterialDescriptor, createMaterial } from "./material.js"
+import { createMetaMaterial } from "./metamaterial.js"
 
 
 /** Load a resource bundle. */
@@ -25,9 +26,10 @@ export async function loadResourceBundleFromDescriptor(
   console.debug(`Loading resources for bundle${descriptor.label ? ` '${descriptor.label}'` : ''}...`)
   const {meshes, label, textures} = descriptor
   const {atlas, meshStore, device, pipelineLayouts} = renderer
-  const shaderStore = renderer.shaders
-  const pipelineStore = renderer.pipelines
-  const materialStore = renderer.materials
+  const shaderStore        = renderer.shaders
+  const pipelineStore      = renderer.pipelines
+  const materialStore      = renderer.materials
+  const metaMaterialStore  = renderer.metaMaterials
   const presentationFormat = renderer.context.presentationFormat
 
   // Load textures
@@ -51,9 +53,22 @@ export async function loadResourceBundleFromDescriptor(
     }))
   })()
 
+  // Load meta-materials
+  const metaMaterialResources: MetaMaterial[] = []
+  const metaMaterialDescriptorTasks = [] // We'll apply the meta-material descriptors after we're sure the shaders are loaded
+  if('metaMaterials' in descriptor) {
+    for(let metaMaterialDescriptor of descriptor.metaMaterials) {
+      const task = () => {
+        const metaMaterial = createMetaMaterial(metaMaterialDescriptor, metaMaterialStore)
+        metaMaterialResources.push(metaMaterial)
+      }
+      metaMaterialDescriptorTasks.push(task)
+    }
+  }
+
   // Load materials
   const materialResources = []
-  const materialDescriptorTasks = [] // We'll apply the material descriptors after we're sure the textures are loaded
+  const materialDescriptorTasks = [] // We'll apply the material descriptors after we're sure the metamaterials and textures are loaded
   if('materials' in descriptor) {
     for(let materialDescriptor of descriptor.materials) {
       const material = createMaterial(materialStore)
@@ -64,7 +79,8 @@ export async function loadResourceBundleFromDescriptor(
 
   await Promise.all([texturesPromise, meshesPromise, shadersPromise])
 
-  // Run material tasks
+  // Run (meta-)material tasks
+  metaMaterialDescriptorTasks.forEach(fn => fn())
   materialDescriptorTasks.forEach(fn => fn())
 
   // Load pipelines
@@ -84,11 +100,12 @@ export async function loadResourceBundleFromDescriptor(
   const endTime = performance.now()
   console.debug(`Finished loading resources for bundle${descriptor.label ? ` '${descriptor.label}'` : ''} in ${endTime - startTime}ms.`)
   return {
-    label:     label, 
-    meshes:    meshResources, 
-    textures:  textureResources,
-    scenes:    sceneResources,
-    materials: materialResources,
+    label:         label, 
+    meshes:        meshResources, 
+    textures:      textureResources,
+    scenes:        sceneResources,
+    materials:     materialResources,
+    metaMaterials: metaMaterialResources
   }
 }
 
@@ -101,13 +118,15 @@ export async function loadMeshResource(
   let vertices = descriptor.vertices
   let indices = descriptor.indices
   let material = descriptor.material
+  let boundingVolume = descriptor.boundingVolume
   if(!vertices) {
     const response = await fetch(descriptor.src)
     if (descriptor.srcType === 'json') {
       const json = await response.json()
-      if(!vertices) vertices = json.vertices
-      if(!indices)  indices  = json.indices
-      if(!material) material = json.material ?? 'default'
+      if(!vertices)       vertices       = json.vertices
+      if(!indices)        indices        = json.indices
+      if(!material)       material       = json.material ?? 'default'
+      if(!boundingVolume) boundingVolume = json.boundingVolume
     } else if (descriptor.srcType === 'bin') {
       const buffer = await response.arrayBuffer()
       throw 'Loading binary mesh files is not implemented'
@@ -124,7 +143,16 @@ export async function loadMeshResource(
     vertices = vertices.map(v => prescaleVertexUV(v, descriptor.prescaleUV))
   const vertexData = serialiseVertices(vertices)
 
-  const meshId = addMesh(name, vertexCount, vertexData, indices, material, meshStore, device)
+  const meshId = addMesh(
+    name, 
+    vertexCount, 
+    vertexData, 
+    indices, 
+    material, 
+    boundingVolume, 
+    meshStore, 
+    device
+  )
   const mesh = getMeshById(meshId, meshStore) // todo: remove
   return mesh
 }

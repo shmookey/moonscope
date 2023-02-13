@@ -1,5 +1,5 @@
 import type { InitMessage, InputState, ErrorMessage, Message, WorkerState, FrameStats } from './types'
-import type { Mat4, ErrorType, MatrixDescriptor, Quat, CameraNode } from './ratite/types'
+import type { Mat4, ErrorType, MatrixDescriptor, Quat, CameraNode, GPUContext, Renderable, SceneGraph } from './ratite/types'
 import { initGPU } from './ratite/gpu.js'
 import { createRenderer, renderFrame } from './ratite/render.js'
 import { loadResourceBundle } from './ratite/resource.js'
@@ -8,11 +8,100 @@ import { createTelescope, defaultTelescopeDescriptor } from './telescope.js'
 import { applyFirstPersonCamera, moveFirstPersonCameraForward, moveFirstPersonCameraRight, moveFirstPersonCameraUpScale, rotateFirstPersonCamera } from './ratite/camera.js'
 import {vec3, mat4, quat, glMatrix} from 'gl-matrix'
 import { RatiteError } from './ratite/error.js'
+import { createDepthMapExporter, exportDepthMapLayer } from './ratite/debug/depth.js'
+import {celestialBodyModelMatrix, generateUniverse, Universe} from './universe.js'
+import * as GPU from './ratite/gpu.js'
+import * as Sky from './sky.js'
+const {sin, cos, random, sqrt, min, max, PI} = Math
 glMatrix.setMatrixArrayType(Array)
 
 const MOUSE_SENSITIVITY = 0.001
 const MOVEMENT_SPEED = 0.01
 const RUN_FACTOR = 5
+
+
+
+type SourceSpec = [
+  number,  // X
+  number,  // Y
+  number,  // Brightness
+  boolean, // Is "positive" summing source
+] 
+const sources: SourceSpec[] = []
+for(let i=0; i<10; i++) {
+  let x = (random()**2) * PI/1.5  // 3 - log(random()*1000)/Math.log(10)
+  if(random() > 0.5) x = -x
+
+  let y = (random()**2) * PI/2
+  if(random() > 0.5) y = -y
+
+  sources.push([
+    x,                  // u
+    y,                  // v
+    10 + random()*10,        // a
+    random() > 0.5,     // light/dark
+  ])
+}
+
+function* layerGen(): Iterator<Sky.LayerData> {
+  let count = 0
+  while(true) {
+    const angle = random()*2*PI - PI
+    const maxFreq = min(500, sqrt(count ** 1.5))
+    const freq = max(1.0, random() * maxFreq)
+    yield sources.map(([X,Y,A,isPositive]) => {
+      let B = isPositive ? 0 : PI
+      let phase = freq * (X*cos(angle) + Y*sin(angle)) + B
+      return [freq, A, angle, phase]
+    })
+    count++
+  }
+}
+
+
+/** return true to force a repaint. */
+function updateWorldState(dT: number, sceneGraph: SceneGraph): boolean {
+  const amount = dT * 0.005
+  const universe: Universe = state.universe
+  //mat4.fromXRotation(tempMat4_1, -amount * universe.localBodies.earth.angularVelocity)
+  //mat4.multiply(tempMat4_1, app.earthNode.transform, tempMat4_1)
+  //setNodeTransform(app.earthNode, tempMat4_1, sceneGraph)
+
+  //mat4.fromXRotation(tempMat4_1, -amount)
+  //mat4.multiply(tempMat4_1, tempMat4_1, app.moonNode.transform)
+  //setNodeTransform(app.moonNode, tempMat4_1, sceneGraph)
+
+  //mat4.fromYRotation(tempMat4_1, amount*1)
+  //mat4.multiply(tempMat4_1, app.sphereNode.transform, tempMat4_1)
+  //setNodeTransform(app.sphereNode, tempMat4_1, sceneGraph)
+
+  //mat4.fromYRotation(tempMat4_1, amount*1)
+  //mat4.multiply(tempMat4_1, app.cameraNode.transform, tempMat4_1)
+  //setNodeTransform(app.cameraNode, tempMat4_1, sceneGraph)
+
+  return true
+}
+
+async function initSkyVis(gpu: GPUContext): Promise<SkyModelState> {
+  const visSource = layerGen()
+  const visState = await Sky.create(
+    1024, // window.visualViewport?.width ?? 1,
+    1024, //window.visualViewport?.height ?? 1,
+    20 * 2**20,
+    sources.length,
+    visSource,
+    gpu
+  )
+  const skyEntity = await Sky.createSkyRenderer(visState.texture, gpu)
+  gpu.entities.push(skyEntity)
+  return { visSource, visState, skyEntity }
+}
+
+type SkyModelState = {
+  visSource: Iterator<Sky.LayerData, any, undefined>,
+  visState: Sky.VisGenState,
+  skyEntity: Renderable,
+}
 
 let nextMessageId = 0
 let state: WorkerState = {
@@ -35,6 +124,8 @@ let state: WorkerState = {
   statsUpdateInterval: 1000,
   fpsLimit:            60,
   gpuReady:            false, 
+  depthMapExporter:    null,
+  universe:            generateUniverse(100),
 }
 
 async function init(opts: InitMessage): Promise<void> {
@@ -53,7 +144,6 @@ async function init(opts: InitMessage): Promise<void> {
   console.debug(state.gpu)
 
   state.renderer = await createRenderer(
-    state.gpu.presentationFormat, 
     state.gpu,
     5000,  // instance storage capacity
     40000, // vertex storage capacity
@@ -71,6 +161,18 @@ async function init(opts: InitMessage): Promise<void> {
   await state.gpu.device.queue.onSubmittedWorkDone()
   postMessage({type: 'ready'})
   setInterval(updateStats, state.statsUpdateInterval)
+
+  try {
+    state.depthMapExporter = createDepthMapExporter(
+      state.renderer.shadowMapper.textureArrayView,
+      state.renderer.shaders,
+      state.gpu.device
+    )
+  } catch(e) {
+    if(e instanceof RatiteError) {
+      return report(e)
+    }
+  }
 }
 
 async function frame() {
@@ -124,7 +226,7 @@ function processInput(input: InputState): void {
   state.lastPhysicsFrame = now
 }
 
-onmessage = (event: MessageEvent<Message>) => {
+onmessage = async (event: MessageEvent<Message>) => {
  
   switch(event.data.type) {
     case 'init':
@@ -149,6 +251,13 @@ onmessage = (event: MessageEvent<Message>) => {
     case 'getState':
       postMessage({type: 'response', correlationId: event.data.id, data: state.sceneGraph.root})
       break
+    case 'debugWorker':
+      debugger
+      break
+    case 'getDepthImage':
+      const image = await exportDepthMapLayer(0, 0.05, 1, state.depthMapExporter)
+      const response = {type: 'response', correlationId: event.data.id, data: image}
+      postMessage(response, {transfer: [image]})
     default:
       report(new RatiteError('InternalError', `Bad event type: ${event.data.type}`))
   }

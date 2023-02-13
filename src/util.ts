@@ -1,5 +1,5 @@
-import type {Quat, Vec3} from './ratite/types';
-import {vec3, mat4, quat} from '../node_modules/gl-matrix/esm/index.js'
+import type {Quat, Vec3} from './ratite/types'
+import {vec3, mat4, quat} from 'gl-matrix'
 
 const RANDOM_SEED = 'hello, world'
 
@@ -42,7 +42,7 @@ export function randomUnitVec3(): Vec3 {
   v[0] = gaussianRandom()
   v[1] = gaussianRandom()
   v[2] = gaussianRandom()
-  return vec3.normalize(v, v)
+  return vec3.normalize(v, v) as Vec3
 }
 
 /** Standard Normal variate using Box-Muller transform. */
@@ -71,6 +71,6 @@ export function randomUnitQuat(): Quat {
   out[2] = sqrtU1 * Math.sin(2.0 * Math.PI * u3);
   out[3] = sqrtU1 * Math.cos(2.0 * Math.PI * u3);
 
-  return out;
+  return out as Quat
 
 }

@@ -10,16 +10,85 @@
     {"label": "dish/rough",    "id": 5, "size": [ 2048, 2048 ], "src": "/assets/texture/dish/rough.png"},
     {"label": "sand/rough",    "id": 6, "size": [ 1024, 1024 ], "src": "/assets/texture/moon-1/rough.jpg", "wrappable": true}
   ],
-  "materials": [
-    {"name": "default", "textures": {"colour": "default"}, "ambient": [0,0,0,0]},
-    {"name": "dish",    "textures": {"colour": "dish/colour", "normal": "dish/normal", "rough": "dish/rough"}, "ambient": [0.005,0.005,0.005,0]},
+  "metaMaterials": [
     {
-      "name":     "ground",  
-      "ambient":  [0,   0,   0,   0],
-      "diffuse":  [0.5, 0.5, 0,   1],
-      "specular": [0.2, 0.2, 0.15, 1],
+      "name":       "default",
+      "alphaBlend": false,
+      "depthTest":  "less",
+      "depthWrite": true,
+      "cullMode":   "back",
+      "frontFace":  "ccw",
+      "shadowCullMode": "none",
+      "layout": {
+      },
+      "shaders": {
+        "forwardVertex":   ["entity-phong.v", "main"],
+        "forwardFragment": ["entity-phong.f", "main"],
+        "shadowVertex":    ["shadow-depth",   "vertex_main"],
+        "shadowFragment":  ["shadow-depth",   "fragment_main"]
+      }
+    }, {
+      "name":       "default-wrap",
+      "alphaBlend": false,
+      "depthTest":  "less",
+      "depthWrite": true,
+      "cullMode":   "back",
+      "frontFace":  "ccw",
+      "shadowCullMode": "none",
+      "layout": {
+      },
+      "shaders": {
+        "forwardVertex":   ["entity-wrap.v", "main"],
+        "forwardFragment": ["entity-wrap.f", "main"],
+        "shadowVertex":    ["shadow-depth",  "vertex_main"],
+        "shadowFragment":  ["shadow-depth",  "fragment_main"]
+      }
+    }, {
+      "name":       "light-source",
+      "alphaBlend": false,
+      "depthTest":  "less",
+      "depthWrite": false,
+      "cullMode":   "back",
+      "frontFace":  "ccw",
+      "shadowCullMode": "front",
+      "shadowDepthWrite": false,
+      "layout": {
+      },
+      "shaders": {
+        "forwardVertex":   ["entity-plain.v", "main"],
+        "forwardFragment": ["light-source.f", "main"],
+        "shadowVertex":    ["shadow-depth",   "vertex_main"],
+        "shadowFragment":  ["shadow-depth",   "fragment_main"]
+      }
+    },{
+      "name":             "skybox-procedural",
+      "alphaBlend":       false,
+      "depthTest":        "always",
+      "depthWrite":       false,
+      "cullMode":         "back",
+      "frontFace":        "cw",
+      "shadowCullMode":   "none",
+      "shadowDepthWrite": false,
+      "layout": {
+      },
+      "shaders": {
+        "forwardVertex":   ["skybox-procedural", "vertex_main"],
+        "forwardFragment": ["skybox-procedural", "fragment_main"],
+        "shadowVertex":    ["shadow-depth",      "vertex_main"],
+        "shadowFragment":  ["shadow-depth",      "fragment_main"]
+      }
+    }
+  ],
+  "materials": [
+    {"name": "default", "metaMaterial": "default", "textures": {"colour": "default"}, "ambient": [0,0,0,0]},
+    {"name": "dish",    "metaMaterial": "default", "textures": {"colour": "dish/colour", "normal": "dish/normal", "rough": "dish/rough"}, "ambient": [0.005,0.005,0.005,1]},
+    {
+      "name":      "ground",  
+      "ambient":   [0.05,   0.05,   0.05,   1],
+      "diffuse":   [0.5, 0.5, 0,   1],
+      "specular":  [0.2, 0.2, 0.15, 1],
       "shininess": 8,
-      "textures": {"colour": "sand/colour", "normal": "sand/normal"}
+      "textures":  {"colour": "sand/colour", "normal": "sand/normal"}
     },{
       "name":     "cube", 
       "ambient":  [0.1, 0,   0,   1],
@@ -57,7 +126,10 @@
     {"name": "autogrid-sphere.f", "src": "/shader/autogrid-sphere.frag.wgsl"},
     {"name": "autogrid.v",        "src": "/shader/autogrid.vert.wgsl"},
     {"name": "light-source.f",    "src": "/shader/light-source.frag.wgsl"},
-    {"name": "linear-wave.f",     "src": "/shader/linear-wave.frag.wgsl"}
+    {"name": "linear-wave.f",     "src": "/shader/linear-wave.frag.wgsl"},
+    {"name": "shadow-depth",      "src": "/shader/shadow-depth.wgsl"},
+    {"name": "depth-to-image",    "src": "/shader/depth-to-image.wgsl"},
+    {"name": "skybox-procedural", "src": "/shader/skybox-procedural.wgsl"}
   ],
   "pipelines": [
     {"name": "entity-pbr-wrapped", "vertexShader": "entity-wrap.v",  "fragmentShader": "entity-wrap.f",     "depthWrite": true},
@@ -70,25 +142,26 @@
     {
       "name": "default",
       "models": [
-        {"name": "floor:sand",    "mesh": "ground",        "pipeline": "entity-pbr-wrapped", "maxInstances":   1},
-        {"name": "beam",          "mesh": "cube",          "pipeline": "linear-wave",        "maxInstances": 100},
-        {"name": "cube",          "mesh": "cube",          "pipeline": "entity-phong",       "maxInstances": 100},
-        {"name": "sphere",        "mesh": "icosphere-3",   "pipeline": "autogrid-sphere",    "maxInstances":   5},
-        {"name": "antenna-mount", "mesh": "antenna-mount", "pipeline": "entity-phong",       "maxInstances": 100},
-        {"name": "antenna-boom",  "mesh": "antenna-boom",  "pipeline": "entity-phong",       "maxInstances": 100},
-        {"name": "antenna-dish",  "mesh": "antenna-dish",  "pipeline": "entity-phong",       "maxInstances": 100},
-        {"name": "point-light",   "mesh": "icosphere-1",   "pipeline": "light-source",       "maxInstances": 100}
+        {"name": "skybox",        "mesh": "cube",          "pipeline": "entity-pbr-wrapped", "metaMaterial": "skybox-procedural", "maxInstances":   1},
+        {"name": "floor:sand",    "mesh": "ground",        "pipeline": "entity-pbr-wrapped", "metaMaterial": "default-wrap", "maxInstances":   1},
+        {"name": "beam",          "mesh": "cube",          "pipeline": "linear-wave",        "metaMaterial": "default",      "maxInstances": 100},
+        {"name": "cube",          "mesh": "cube",          "pipeline": "entity-phong",       "metaMaterial": "default",      "maxInstances": 100},
+        {"name": "sphere",        "mesh": "icosphere-3",   "pipeline": "autogrid-sphere",    "metaMaterial": "default",      "maxInstances":   5},
+        {"name": "antenna-mount", "mesh": "antenna-mount", "pipeline": "entity-phong",       "metaMaterial": "default",      "maxInstances": 100},
+        {"name": "antenna-boom",  "mesh": "antenna-boom",  "pipeline": "entity-phong",       "metaMaterial": "default",      "maxInstances": 100},
+        {"name": "antenna-dish",  "mesh": "antenna-dish",  "pipeline": "entity-phong",       "metaMaterial": "default",      "maxInstances": 100},
+        {"name": "point-light",   "mesh": "icosphere-1",   "pipeline": "light-source",       "metaMaterial": "light-source",      "maxInstances": 100}
       ],
       "root": {
         "type": "transform",
         "children": [
+          { "name": "skybox", "type": "model", "modelName": "skybox" },
           { "type": "transform", "transform": {"type": "trs", "translation": [0, 0, 0]}, 
             "children": [
               { "name": "camera-fps", "type": "camera", "view": "default" }]},
           { "name": "floor", "type": "model", "modelName": "floor:sand" },
-          { "name": "test-cube", "type": "model", "modelName": "cube", "transform": {"type": "trs", "translation": [2, 2, -4]} },
+          { "name": "test-cube", "type": "model", "modelName": "cube", "transform": {"type": "trs", "translation": [0, 0.5, -2], "scale": [0.5,0.5,0.5]} },
           { "name": "light-cube", "type": "model", "modelName": "cube", "material": "light-cube", "transform": {"type": "trs", "translation": [-15, 5, -35]} },
-          { "name": "beam", "type": "model", "visible": false, "modelName": "beam", "transform": {"type": "trs", "scale": [0.25, 3, 0.25], "translation": [0  , 3,  -5]} },
           { "name": "telescope", "type": "transform" },
           { "name": "antenna", "type": "transform", 
             "children": [
@@ -102,23 +175,18 @@
                 ]}
             ]
           },
-          { "name": "point-light-1", "type": "transform", "visible": false,
-            "transform": {"type": "trs", "translation": [0, 5, 1] },
+          { "name": "directional-light-1", "type": "transform", 
+            "transform": {"type": "trs", "translation": [3, 10, 3], "rotateEuler":[-45, 60, 0] },
             "children": [
-              { "type": "model", "modelName": "point-light", "transform": {"type": "trs", "scale": [0.1, 0.1, 0.1]} },
-              { "type": "light", "lightType": "point", "attenuation": [1, 0, 0.1, 0], "ambient": [0.2, 0.2, 0.2, 1], "diffuse": [0.5, 0.5, 0.5, 1], "specular": [1, 1, 1, 1] }
-            ]},
-          { "name": "spot-light-1", "type": "transform",
-            "transform": {"type": "trs", "translation": [0, 8, 0], "rotation": [-0.7071, 0, 0, 0.7071] },
-            "children": [
-              { "type": "model", "modelName": "point-light", "transform": {"type": "trs", "scale": [0.1, 0.1, 0.1]} },
-              { "type": "light", "lightType": "spot", "direction": [0,-1,0,0], "cone": [0.9,0.8], "attenuation": [1, 0, 0.1, 0], "ambient": [0.2, 0.2, 0.2, 1], "diffuse": [0.5, 0.5, 0.5, 1], "specular": [1, 1, 1, 1] }
+              { "type": "model", "modelName": "point-light", "transform": {"type": "trs", "scale": [0.1, 0.1, 0.1]}, "material": "light-cube" },
+              { "type": "light", "lightType": "directional", "castShadows": true, "view": "shadow-caster-1", "attenuation": [1, 0, 0.001, 0], "ambient": [0.2, 0.2, 0.2, 1], "diffuse": [0.5, 0.5, 0.5, 1], "specular": [1, 1, 1, 1] }
             ]}
         ]
       },
       "views": [
         {
           "name": "default",
+          "type": "camera",
           "projection": {
             "type":   "perspective",
             "fovy":   80,
@@ -126,6 +194,9 @@
             "near":   0.1,
             "far":    "Infinity"
           }
+        }, {
+          "name": "shadow-caster-1",
+          "type": "light"
         }
       ]
     }

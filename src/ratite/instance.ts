@@ -47,17 +47,23 @@ import {
 
 /** Initialise the instance allocator. */
 export function createInstanceAllocator(device: GPUDevice, capacity: number): InstanceAllocator {
+  const storageBufferSize = capacity * INSTANCE_RECORD_SIZE
+  const instanceBufferSize = capacity * INSTANCE_INDEX_SIZE
   const storageBuffer = device.createBuffer({
-    size:  capacity * INSTANCE_RECORD_SIZE,
+    size:  storageBufferSize,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   })
   const instanceBuffer = device.createBuffer({
-    size:  capacity * INSTANCE_INDEX_SIZE,
+    size:  instanceBufferSize,
     usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
   })
+  const storageData = new ArrayBuffer(storageBufferSize)
+  const instanceData = new ArrayBuffer(instanceBufferSize)
   return { 
     storageBuffer:    storageBuffer,
     instanceBuffer:   instanceBuffer,
+    storageData:      storageData,
+    instanceData:     instanceData,
     nextAllocationId: 0, 
     nextInstanceId:   0,
     nextStorageSlot:  0,
@@ -77,13 +83,15 @@ export function registerAllocation(capacity: number, allocator: InstanceAllocato
   }
   const allocationId = allocator.nextAllocationId
   const instanceIndex = allocator.nextInstanceSlot
+  const instanceOffset = instanceIndex * INSTANCE_INDEX_SIZE
+  const instanceLength = capacity * INSTANCE_INDEX_SIZE
   const meshAllocation: InstanceAllocation = {
     id: allocationId, 
     instanceIndex, 
     capacity, 
     numInstances: 0,
     numActive: 0,
-    slotData: new Uint32Array(capacity),
+    slotData: new Uint32Array(allocator.instanceData, instanceOffset, instanceLength),
     slotInstances: new Uint32Array(capacity),
   }
   allocator.allocations[allocationId] = meshAllocation
@@ -113,10 +121,6 @@ export function addInstance(
     throw new Error('Allocation is full')
   }
   
-  const instanceId = allocator.nextInstanceId
-  const buffer = new ArrayBuffer(INSTANCE_RECORD_SIZE)
-  serialiseInstanceData(data, buffer)
-  
   let storageSlot = null
   if(allocator.vacated.length > 0) {
     storageSlot = allocator.vacated.pop()
@@ -124,25 +128,17 @@ export function addInstance(
     storageSlot = allocator.nextStorageSlot
     allocator.nextStorageSlot++
   }
+  const storagePointer = storageSlot * INSTANCE_RECORD_SIZE
+  const instanceId = allocator.nextInstanceId
+  serialiseInstanceData(data, allocator.storageData, storagePointer)
 
   const instance: InstanceRecord = { 
     instanceId:   instanceId, 
     allocationId: allocationId,
     instanceSlot: null, 
     storageSlot:  storageSlot,
-    buffer:       buffer,
   }
   allocator.instances[instanceId] = instance
-
-  const storagePointer = storageSlot * INSTANCE_RECORD_SIZE
-
-  device.queue.writeBuffer(
-    allocator.storageBuffer, 
-    storagePointer, 
-    buffer, 
-    0, 
-    INSTANCE_RECORD_SIZE
-  )
 
   allocation.numInstances++
   allocator.nextInstanceId++
@@ -175,8 +171,6 @@ export function activateInstance(
   const allocation = allocator.allocations[instance.allocationId]
   const base = allocation.instanceIndex
   const instanceSlot = base + allocation.numActive
-  const instancePointer = instanceSlot * INSTANCE_INDEX_SIZE
-  device.queue.writeBuffer(allocator.instanceBuffer, instancePointer, new Uint32Array([instance.storageSlot]))
   allocation.slotData[instanceSlot - base] = instance.storageSlot
   allocation.slotInstances[instanceSlot - base] = instanceId
   instance.instanceSlot = instanceSlot
@@ -205,14 +199,11 @@ export function deactivateInstance(
   allocation.slotInstances.set(instanceIdsAfter, rel)
   allocation.slotData[allocation.numActive - 1] = 0
   allocation.slotInstances[allocation.numActive - 1] = 0
-  const instancePointer = instance.instanceSlot * INSTANCE_INDEX_SIZE
-  const changedRegion = allocation.slotData.slice(rel, allocation.numActive)
-  device.queue.writeBuffer(allocator.instanceBuffer, instancePointer, changedRegion)
   instance.instanceSlot = null
   allocation.numActive--
 }
 
-/** Update an instance in the GPU buffer. */
+/** Update an instance. */
 export function updateInstanceData(
     instanceId:   number, 
     allocator:    InstanceAllocator,
@@ -223,17 +214,16 @@ export function updateInstanceData(
     throw new Error('Invalid instance ID')
   }
   const instance = allocator.instances[instanceId]
+  const storagePointer = instance.storageSlot * INSTANCE_RECORD_SIZE
   if(data)
-    serialiseInstanceData(data, instance.buffer)
-  const { storageBuffer } = allocator
-  device.queue.writeBuffer(
-    storageBuffer, 
-    instance.storageSlot * INSTANCE_RECORD_SIZE, 
-    instance.buffer,
-    0,
-    INSTANCE_RECORD_SIZE
-  )
+    serialiseInstanceData(data, allocator.storageData, storagePointer)
 
+}
+
+/** Sync the instance and storage buffers with the GPU. */
+export function syncInstanceBuffers(allocator: InstanceAllocator, device: GPUDevice): void {
+  device.queue.writeBuffer(allocator.storageBuffer, 0, allocator.storageData)
+  device.queue.writeBuffer(allocator.instanceBuffer, 0, allocator.instanceData)
 }
 
 const serialiseInstanceData_buffer = new ArrayBuffer(INSTANCE_RECORD_SIZE)

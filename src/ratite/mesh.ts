@@ -10,7 +10,7 @@
  * may be used by the application to look up a default material for the mesh.
  */
 
-import type { MeshResource, MeshResourceDescriptor, MeshStore, MeshVertex, XMesh } from "./types"
+import type { BoundingVolume, MeshResource, MeshResourceDescriptor, MeshStore, MeshVertex, XMesh } from "./types"
 import {VERTEX_SIZE} from "./constants.js"
 import {writeVertices} from "./vertex.js"
 
@@ -51,13 +51,14 @@ export function createMeshStore(
 
 /** Add a mesh to the store. Returns the mesh ID. */
 export function addMesh(
-    name:        string,
-    vertexCount: number,
-    vertexData:  ArrayBuffer,
-    indices:     number[],
-    material:    string,
-    store:       MeshStore,
-    device:      GPUDevice): number {
+    name:           string,
+    vertexCount:    number,
+    vertexData:     ArrayBuffer,
+    indices:        number[],
+    material:       string,
+    boundingVolume: BoundingVolume,
+    store:          MeshStore,
+    device:         GPUDevice): number {
 
   if(vertexData.byteLength !== vertexCount * store.vertexSize)
     throw new Error('Invalid mesh data size')
@@ -81,6 +82,7 @@ export function addMesh(
     indexPointer,
     indexOffset,
     material,
+    boundingVolume,
   }
   store.meshes[meshId] = mesh
   store.nextMeshId++

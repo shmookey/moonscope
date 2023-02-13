@@ -38,7 +38,11 @@ export function setProjectionMatrix(projectionMatrix: Mat4, buffer: GPUBuffer, d
 }
 
 /** Setup Ratite's basic pipeline layouts. */
-export function createPipelineLayouts(device: GPUDevice): PipelineLayoutState {
+export function createPipelineLayouts(
+    shadowMapBindGroupLayout: GPUBindGroupLayout,
+    device: GPUDevice
+  ): PipelineLayoutState {
+
   const geometryBindGroupLayout = device.createBindGroupLayout({
     label: 'geometry-bind-group-layout',
     entries: [{
@@ -86,18 +90,18 @@ export function createPipelineLayouts(device: GPUDevice): PipelineLayoutState {
       },
     }]
   })
-  const shadowMapBindGroupLayout = device.createBindGroupLayout({
-    label: 'shadow-map-bind-group-layout',
-    entries: [{
-      // Array texture    
-      binding: 0,
-      visibility: GPUShaderStage.FRAGMENT,
-      texture: { 
-        sampleType:    'depth', 
-        viewDimension: '2d-array'
-      },
-    }]
-  })
+  //const shadowMapBindGroupLayout = device.createBindGroupLayout({
+  //  label: 'shadow-map-bind-group-layout',
+  //  entries: [{
+  //    // Array texture    
+  //    binding: 0,
+  //    visibility: GPUShaderStage.FRAGMENT,
+  //    texture: { 
+  //      sampleType:    'depth', 
+  //      viewDimension: '2d-array'
+  //    },
+  //  }]
+  //})
   const forwardRenderPipelineLayout = device.createPipelineLayout({
     label: 'forward-render-pipeline-layout',
     bindGroupLayouts: [
@@ -168,25 +172,25 @@ export function createMaterialsBindGroup(
 }
 
 /** Create a shadow map bind group. */
-export function createShadowMapBindGroup( 
-  texture:         GPUTexture,
-  layouts:         PipelineLayoutState,
-  device:          GPUDevice): GPUBindGroup {
-    
-  const textureView = texture.createView({
-    label:           'materials-bind-group-texture-view',
-    format:          texture.format,
-    dimension:       '2d-array',
-    arrayLayerCount: texture.depthOrArrayLayers,
-  })
-  return device.createBindGroup({
-    label: 'shadow-map-bind-group',
-    layout: layouts.shadowMapBindGroupLayout,
-    entries: [
-      { binding: 0, resource: textureView },
-    ]
-  })
-}
+//export function createShadowMapBindGroup( 
+//  texture:         GPUTexture,
+//  layouts:         PipelineLayoutState,
+//  device:          GPUDevice): GPUBindGroup {
+//    
+//  const textureView = texture.createView({
+//    label:           'materials-bind-group-texture-view',
+//    format:          texture.format,
+//    dimension:       '2d-array',
+//    arrayLayerCount: texture.depthOrArrayLayers,
+//  })
+//  return device.createBindGroup({
+//    label: 'shadow-map-bind-group',
+//    layout: layouts.shadowMapBindGroupLayout,
+//    entries: [
+//      { binding: 0, resource: textureView },
+//    ]
+//  })
+//}
 
 /** Create a sampler for the main texture atlas. */
 export function createMainSampler(device: GPUDevice): GPUSampler {
@@ -199,6 +203,26 @@ export function createMainSampler(device: GPUDevice): GPUSampler {
     lodMinClamp:   2,
   })
 }
+
+export const vertexBufferLayout: GPUVertexBufferLayout[] = [{
+  arrayStride: VERTEX_SIZE,
+  stepMode: 'vertex',
+  attributes: [
+    { shaderLocation: 0, offset: 0,  format: 'float32x4' }, // position
+    { shaderLocation: 1, offset: 16, format: 'float32x2' }, // uv
+    { shaderLocation: 2, offset: 24, format: 'snorm16x4' }, // normal
+    { shaderLocation: 3, offset: 32, format: 'snorm16x4' }, // tangent
+    { shaderLocation: 4, offset: 40, format: 'snorm16x4' }, // bitangent
+    { shaderLocation: 5, offset: 48, format: 'uint32x4'  }, // textures
+  ]
+}, {
+  arrayStride: 4,
+  stepMode: 'instance',
+  attributes: [
+    { shaderLocation: 6, offset: 0, format: 'uint32' }, // storage index
+  ]
+}]
+
 
 /** Create a pipeline object for forward rendering. */
 export function createForwardRenderPipeline(
@@ -215,26 +239,9 @@ export function createForwardRenderPipeline(
     label: `forward-render-pipeline::${name}`,
     layout: layouts.forwardRenderPipelineLayout,
     vertex: {
-      module: vertexShader,
+      module:     vertexShader,
       entryPoint: 'main',
-      buffers: [{
-        arrayStride: VERTEX_SIZE,
-        stepMode: 'vertex',
-        attributes: [
-          { shaderLocation: 0, offset: 0,  format: 'float32x4' }, // position
-          { shaderLocation: 1, offset: 16, format: 'float32x2' }, // uv
-          { shaderLocation: 2, offset: 24, format: 'snorm16x4' }, // normal
-          { shaderLocation: 3, offset: 32, format: 'snorm16x4' }, // tangent
-          { shaderLocation: 4, offset: 40, format: 'snorm16x4' }, // bitangent
-          { shaderLocation: 5, offset: 48, format: 'uint32x4'  }, // textures
-        ]
-      }, {
-        arrayStride: 4,
-        stepMode: 'instance',
-        attributes: [
-          { shaderLocation: 6, offset: 0, format: 'uint32' }, // storage index
-        ]
-      }]
+      buffers:    vertexBufferLayout,
     },
     fragment: {
       module: fragShader,
@@ -265,6 +272,7 @@ export function createForwardRenderPipeline(
   return pipeline
 }
 
+
 /** Create a pipeline object for depth pass rendering. */
 export function createDepthPassPipeline(
   name:               string,
@@ -287,26 +295,9 @@ export function createDepthPassPipeline(
     label: `depth-pass-pipeline::${name}`,
     layout: layouts.forwardRenderPipelineLayout,
     vertex: {
-      module: vertexShader,
+      module:     vertexShader,
       entryPoint: 'main',
-      buffers: [{
-        arrayStride: VERTEX_SIZE,
-        stepMode: 'vertex',
-        attributes: [
-          { shaderLocation: 0, offset: 0,  format: 'float32x4' }, // position
-          { shaderLocation: 1, offset: 16, format: 'float32x2' }, // uv
-          { shaderLocation: 2, offset: 24, format: 'snorm16x4' }, // normal
-          { shaderLocation: 3, offset: 32, format: 'snorm16x4' }, // tangent
-          { shaderLocation: 4, offset: 40, format: 'snorm16x4' }, // bitangent
-          { shaderLocation: 5, offset: 48, format: 'uint32x4'  }, // textures
-        ]
-      }, {
-        arrayStride: 4,
-        stepMode: 'instance',
-        attributes: [
-          { shaderLocation: 6, offset: 0, format: 'uint32' }, // storage index
-        ]
-      }]
+      buffers:    vertexBufferLayout,
     },
     fragment: {
       module:     fragShader,

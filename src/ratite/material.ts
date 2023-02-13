@@ -47,7 +47,7 @@
 
 import type { 
   Atlas, Material, MaterialDescriptor, MaterialState, 
-  MaterialTexturesDescriptor 
+  MaterialTexturesDescriptor, MetaMaterialState
 } from './types'
 import {
   MATERIAL_RECORD_SIZE,
@@ -59,10 +59,16 @@ import {
   MATERIAL_RECORD_OFFSET_SHININESS,
 } from './constants.js'
 import { getSubTextureByName } from './atlas.js'
+import { RatiteError } from './error.js'
 
 
 /** Initialise the materials manager. */
-export function createMaterialState(bufferCapacity: number, atlas: Atlas, device: GPUDevice): MaterialState {
+export function createMaterialState(
+    bufferCapacity: number,
+    metaMaterials: MetaMaterialState,
+    atlas: Atlas, 
+    device: GPUDevice): MaterialState {
+
   const byteLength = bufferCapacity * MATERIAL_RECORD_SIZE
   const buffer = device.createBuffer({
     size:  byteLength,
@@ -72,6 +78,7 @@ export function createMaterialState(bufferCapacity: number, atlas: Atlas, device
     device,
     buffer,
     bufferCapacity,
+    metaMaterials,
     atlas,
     bufferData:     new ArrayBuffer(byteLength),
     bufferUsage:    0,
@@ -87,16 +94,17 @@ export function createMaterialState(bufferCapacity: number, atlas: Atlas, device
  */
 export function createMaterial(state: MaterialState, descriptor?: MaterialDescriptor): Material {
   const material: Material = {
-    id:        state.nextMaterialID++,
-    name:      descriptor?.name,
-    slot:      null,
-    ambient:   [0, 0, 0, 0],
-    diffuse:   [1, 1, 1, 1],
-    specular:  [1, 1, 1, 1],
-    emissive:  [0, 0, 0, 0],
-    shininess: 0,
-    textures:  [null, null, null, null],
-    usage:     0
+    id:           state.nextMaterialID++,
+    name:         descriptor?.name,
+    slot:         null,
+    ambient:      [0, 0, 0, 0],
+    diffuse:      [1, 1, 1, 1],
+    specular:     [1, 1, 1, 1],
+    emissive:     [0, 0, 0, 0],
+    shininess:    0,
+    textures:     [null, null, null, null],
+    usage:        0,
+    metaMaterial: null,
   }
   state.materials[material.id] = material
   if(descriptor)
@@ -107,7 +115,7 @@ export function createMaterial(state: MaterialState, descriptor?: MaterialDescri
 /** Apply a material descriptor to a material. */
 export function applyMaterialDescriptor(id: number, descriptor: MaterialDescriptor, state: MaterialState): void {
   if(!(id in state.materials))
-    throw new Error(`Invalid material ID: ${id}`)
+    throw new RatiteError('NotFound', `Invalid material ID: ${id}`)
 
   const material = state.materials[id]
 
@@ -119,6 +127,14 @@ export function applyMaterialDescriptor(id: number, descriptor: MaterialDescript
   material.shininess = descriptor.shininess ?? material.shininess
   if(descriptor.textures)
     applyTexturesDescriptor(id, descriptor.textures, state)
+
+  if(descriptor.metaMaterial) {
+    const metaMaterial = state.metaMaterials.metaMaterials.get(descriptor.metaMaterial)
+    if(!metaMaterial)
+      throw new RatiteError('NotFound', `Invalid meta-material: ${descriptor.metaMaterial}`)
+    material.metaMaterial = metaMaterial
+    metaMaterial.usage++
+  }
 }
 
 /** Apply a textures descriptor to a material.
@@ -129,7 +145,7 @@ export function applyMaterialDescriptor(id: number, descriptor: MaterialDescript
  */
 export function applyTexturesDescriptor(id: number, descriptor: MaterialTexturesDescriptor, state: MaterialState): void {
   if(!(id in state.materials))
-    throw new Error(`Invalid material ID: ${id}`)
+    throw new RatiteError('NotFound', `Invalid material ID: ${id}`)
 
   const material = state.materials[id]
 
@@ -139,7 +155,7 @@ export function applyTexturesDescriptor(id: number, descriptor: MaterialTextures
     else {
       const texture = getSubTextureByName(descriptor.colour, state.atlas)
       if(texture === null)
-        throw new Error(`No such texture: ${descriptor.colour}`)
+        throw new RatiteError('NotFound', `No such texture: ${descriptor.colour}`)
       material.textures[0] = texture.id
     }
   }
@@ -149,7 +165,7 @@ export function applyTexturesDescriptor(id: number, descriptor: MaterialTextures
     else {
       const texture = getSubTextureByName(descriptor.normal, state.atlas)
       if(texture === null)
-        throw new Error(`No such texture: ${descriptor.normal}`)
+        throw new RatiteError('NotFound', `No such texture: ${descriptor.normal}`)
       material.textures[1] = texture.id
     }
   }
@@ -159,7 +175,7 @@ export function applyTexturesDescriptor(id: number, descriptor: MaterialTextures
     else {
       const texture = getSubTextureByName(descriptor.specular, state.atlas)
       if(texture === null)
-        throw new Error(`No such texture: ${descriptor.specular}`)
+        throw new RatiteError('NotFound', `No such texture: ${descriptor.specular}`)
       material.textures[2] = texture.id
     }
   }
@@ -169,7 +185,7 @@ export function applyTexturesDescriptor(id: number, descriptor: MaterialTextures
     else {
       const texture = getSubTextureByName(descriptor.emissive, state.atlas)
       if(texture === null)
-        throw new Error(`No such texture: ${descriptor.emissive}`)
+        throw new RatiteError('NotFound', `No such texture: ${descriptor.emissive}`)
       material.textures[3] = texture.id
     }
   }
@@ -178,9 +194,9 @@ export function applyTexturesDescriptor(id: number, descriptor: MaterialTextures
 /** Activate a material. */
 export function activateMaterial(id: number, state: MaterialState): void {
   if(!(id in state.materials))
-    throw new Error(`Invalid material ID: ${id}`)
+    throw new RatiteError('NotFound', `Invalid material ID: ${id}`)
   if (state.bufferUsage >= state.bufferCapacity)
-    throw new Error('Materials buffer is full')  
+    throw new RatiteError('OutOfResources', 'Materials buffer is full')  
 
   const material = state.materials[id]
 
@@ -202,7 +218,7 @@ export function activateMaterial(id: number, state: MaterialState): void {
  */
 export function deactivateMaterial(id: number, state: MaterialState): void {
   if(!(id in state.materials))
-    throw new Error(`Invalid material ID: ${id}`)
+    throw new RatiteError('NotFound', `Invalid material ID: ${id}`)
 
   const material = state.materials[id]
 
@@ -210,7 +226,7 @@ export function deactivateMaterial(id: number, state: MaterialState): void {
     return // already inactive
 
   if (material.usage > 0)
-    throw new Error('Cannot deactivate material while in use')
+    throw new RatiteError('InvalidOperation', 'Cannot deactivate material while in use')
 
   const slot = material.slot
   material.slot = null
@@ -235,7 +251,7 @@ export function deactivateMaterial(id: number, state: MaterialState): void {
  */
 export function updateMaterial(id: number, state: MaterialState): void {
   if(!(id in state.materials))
-    throw new Error(`Invalid material ID: ${id}`)
+    throw new RatiteError('NotFound', `Invalid material ID: ${id}`)
 
   const material = state.materials[id]
 
@@ -297,7 +313,7 @@ export function updateMaterials(state: MaterialState): void {
  */
 export function useMaterial(id: number, state: MaterialState): number {
   if(!(id in state.materials))
-    throw new Error(`Invalid material ID: ${id}`)
+    throw new RatiteError('NotFound', `Invalid material ID: ${id}`)
 
   const material = state.materials[id]
 
@@ -317,7 +333,7 @@ export function useMaterial(id: number, state: MaterialState): number {
 export function useMaterialByName(name: string, state: MaterialState): number {
   const material = state.materials.find(m => m.name === name)
   if (!material)
-    throw new Error(`Invalid material name: ${name}`)
+    throw new RatiteError('NotFound', `Invalid material name: ${name}`)
   return useMaterial(material.id, state)
 }
 
@@ -327,15 +343,15 @@ export function useMaterialByName(name: string, state: MaterialState): number {
  */
 export function releaseMaterial(id: number, state: MaterialState, deactivate = true): void {
   if(!(id in state.materials))
-    throw new Error(`Invalid material ID: ${id}`)
+    throw new RatiteError('NotFound', `Invalid material ID: ${id}`)
 
   const material = state.materials[id]
 
   if(material.slot === null)
-    throw new Error('Cannot release inactive material')
+    throw new RatiteError('InvalidOperation', 'Cannot release inactive material')
 
   if(material.usage < 1)
-    throw new Error('Cannot release material not in use')
+    throw new RatiteError('InvalidOperation', 'Cannot release material not in use')
 
   material.usage--
   if (material.usage === 0 && deactivate)
@@ -346,7 +362,7 @@ export function releaseMaterial(id: number, state: MaterialState, deactivate = t
 export function releaseMaterialByName(name: string, state: MaterialState, deactivate = true): void {
   const material = state.materials.find(m => m.name === name)
   if (!material)
-    throw new Error(`Invalid material name: ${name}`)
+    throw new RatiteError('NotFound', `Invalid material name: ${name}`)
   releaseMaterial(material.id, state, deactivate)
 }
 

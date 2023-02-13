@@ -3,7 +3,7 @@
 // I haven't got around to figuring out where the last few useful bits should
 // go.
 
-import type {XMesh, Vec2, Vec3, MeshVertex, Quat} from "../types"
+import type {XMesh, Vec2, Vec3, MeshVertex, Quat, BoundingVolume} from "../types"
 import {vec3, mat4, quat} from "gl-matrix"
 import { Vertex } from "../vertex.js"
 const { sqrt } = Math
@@ -278,25 +278,22 @@ const tempV3_1 = vec3.create()
 //  return out
 //}
 
-
-//function getBoundingBox(input: Mesh): BoundingBox {
-//  const x      = input.vertices.map(([x, y, z, ..._]) => x).sort((a, b) => a - b)[0];
-//  const y      = input.vertices.map(([x, y, z, ..._]) => y).sort((a, b) => a - b)[0];
-//  const z      = input.vertices.map(([x, y, z, ..._]) => z).sort((a, b) => a - b)[0];
-//  const width  = input.vertices.map(([x, y, z, ..._]) => x).sort((a, b) => b - a)[0] - x;
-//  const height = input.vertices.map(([x, y, z, ..._]) => y).sort((a, b) => b - a)[0] - y;
-//  const depth  = input.vertices.map(([x, y, z, ..._]) => z).sort((a, b) => b - a)[0] - z;
-//  return {x, y, z, width, height, depth};
-//}
-
-type BoundingBox = {
-  x: number,
-  y: number,
-  z: number,
-  width: number,
-  height: number,
-  depth: number,
+/** Get the bounding volume of a set of vertices. */
+export function getBoundingVolume(vertices: MeshVertex[]): BoundingVolume {
+  const min = [Infinity, Infinity, Infinity] as Vec3
+  const max = [-Infinity, -Infinity, -Infinity] as Vec3
+  for (const v of vertices) {
+    const p = v.position
+    min[0] = Math.min(min[0], p[0])
+    min[1] = Math.min(min[1], p[1])
+    min[2] = Math.min(min[2], p[2])
+    max[0] = Math.max(max[0], p[0])
+    max[1] = Math.max(max[1], p[1])
+    max[2] = Math.max(max[2], p[2])
+  }
+  return { min, max }
 }
+
 
 
 //SurfaceMesh icosahedron()

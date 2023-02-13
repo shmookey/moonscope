@@ -48,12 +48,19 @@ struct AtlasData {
   data: array<AtlasRecord>,
 }
 
-@group(0) @binding(0) var<uniform> uniforms:     Uniforms;
-@group(0) @binding(2) var<storage> lighting:     Lighting;
-@group(1) @binding(0) var<storage> materialData: MaterialData;
-@group(1) @binding(1) var<storage> atlasData:    AtlasData;
-@group(1) @binding(2) var          mySampler:    sampler;
-@group(1) @binding(3) var          atlas:        texture_2d_array<f32>;
+struct ShadowData {
+  data: array<mat4x4<f32>>,
+}
+
+@group(0) @binding(0) var<uniform> uniforms:      Uniforms;
+@group(0) @binding(2) var<storage> lighting:      Lighting;
+@group(1) @binding(0) var<storage> materialData:  MaterialData;
+@group(1) @binding(1) var<storage> atlasData:     AtlasData;
+@group(1) @binding(2) var          mySampler:     sampler;
+@group(1) @binding(3) var          atlas:         texture_2d_array<f32>;
+@group(2) @binding(0) var          shadowAtlas:   texture_depth_2d_array;
+@group(2) @binding(1) var          shadowSampler: sampler_comparison;
+@group(2) @binding(2) var<storage> shadowData:    ShadowData;
 
 
 fn attenuate(dist: f32, attenuation: vec4<f32>) -> f32 {
@@ -108,14 +115,24 @@ fn main(
     let light      = lighting.data[i];
     var lightLevel = 0.0;
     var lightDir   = vec3<f32>(0);
+    // Get shadows
+    let shadowMatrix = shadowData.data[0];
+    let shadowCoord  = shadowMatrix * vec4<f32>(position, 1);
+    let shadowCoordN = shadowCoord.xyz / shadowCoord.w;
+    let shadowCoordS = vec3(shadowCoordN.xy * vec2(0.5,-0.5) + 0.5, shadowCoordN.z);
+    let shadow       = 0.0; //textureSample(shadowAtlas, shadowSampler, shadowCoordS.xy, i);
+    var shadowFactor = select(0.2, 1.0, shadow > (shadowCoordS.z-0.007));
+    if(shadowCoordS.z >= 1) {
+      shadowFactor = 1;
+    }
     if(light.type_ == 0) { // point light
       let path   = light.position.xyz - position;
       let dist   = length(path);
       lightDir   = normalize(path);
-      lightLevel = attenuate(dist, light.attenuation);
+      lightLevel = attenuate(dist, light.attenuation) * shadowFactor;
     } else if(light.type_ == 1) { // directional light
-      lightDir   = light.direction.xyz;
-      lightLevel = 1;
+      lightDir   = -light.direction.xyz;
+      lightLevel = shadowFactor;
     } else if(light.type_ == 2) { // spot light
       let path      = light.position.xyz - position;
       let dir       = normalize(path);
@@ -126,7 +143,7 @@ fn main(
       let intensity = clamp((theta - gamma) / epsilon, 0, 1);
       let dist      = length(path);
       lightDir      = dir;
-      lightLevel    = intensity * attenuate(dist, light.attenuation);
+      lightLevel    = intensity * attenuate(dist, light.attenuation) * shadowFactor;
     }
     if(material.ambient.a > 0 && light.ambient.a > 0) {
       ambient += light.ambient.rgb * material.ambient.rgb * lightLevel;

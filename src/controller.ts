@@ -12,13 +12,18 @@ export function createWorkerController(): WorkerController {
   const worker = new Worker(new URL('/build/src/worker.js', import.meta.url), {type: 'module'})
   const status = 'created'
   const listeners = {}
-  const controller: WorkerController = {status, worker, listeners, nextId: 0}
+  const controller: WorkerController = {status, worker, listeners, nextId: 0, callbacks: {}}
   worker.onmessage = createMessageHandler(controller)
   addWorkerEventListener('ready',   () => { controller.status = 'idle' },    controller)
   addWorkerEventListener('started', () => { controller.status = 'running' }, controller)
   addWorkerEventListener('stopped', () => { controller.status = 'idle' },    controller)
   addWorkerEventListener('response', (ev: ResponseMessage) => {
     console.info(`Response to message ${ev.correlationId} received with data:`, ev.data)
+    const callback = controller.callbacks[ev.correlationId]
+    if(callback)
+      callback(ev.data)
+    else
+      console.warn(`No callback for message ${ev.correlationId}`)
   }, controller)
   return controller
 }
@@ -69,3 +74,21 @@ export function sendInputToWorker(input: InputState, controller: WorkerControlle
 export function getStateFromWorker(controller: WorkerController): void {
   controller.worker.postMessage({type: 'getState'})
 }
+
+/** Start debugging the worker. */
+export function debugWorker(controller: WorkerController): void {
+  controller.worker.postMessage({type: 'debugWorker'})
+}
+
+/** Get depth image from worker. */
+export async function getDepthImage(layer: number, controller: WorkerController): Promise<ImageBitmap> {
+  const callId = controller.nextId++
+  controller.worker.postMessage({type: 'getDepthImage', layer, id: callId})
+  let resolver = null
+  const promise = new Promise<ImageBitmap>((resolve) => {
+    resolver = resolve
+  })
+  controller.callbacks[callId] = resolver
+  return promise
+}
+

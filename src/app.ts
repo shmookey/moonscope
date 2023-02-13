@@ -4,8 +4,8 @@ import * as Skybox from './ratite/skybox.js'
 import * as Render from './ratite/render.js'
 import { createInputState } from './input.js'
 import { getLayerAsImageBitmap } from './ratite/atlas.js'
-import {vec3, mat4, quat} from 'gl-matrix'
-import type {Mat4, Renderer, SceneGraph, ViewDescriptor, Quat, ModelNode, MatrixDescriptor, GPUContext, Renderable, ResourceBundleDescriptor, ErrorType} from './ratite/types.js'
+import {vec3, mat4, quat, glMatrix} from 'gl-matrix'
+import type {Mat4, Renderer, SceneGraph, Quat, ModelNode, MatrixDescriptor, GPUContext, Renderable, ResourceBundleDescriptor, ErrorType} from './ratite/types.js'
 import {applyFirstPersonCamera, getCameraViewMatrix, moveFirstPersonCameraForward, moveFirstPersonCameraRight, moveFirstPersonCameraUp, moveFirstPersonCameraUpScale, rotateFirstPersonCamera} from './ratite/camera.js'
 import {celestialBodyModelMatrix, generateUniverse, Universe} from './universe.js'
 import {getMeshByName} from './ratite/mesh.js'
@@ -15,9 +15,10 @@ import {Antenna, setAntennaAltitude, setAntennaAzimuth} from './antenna.js'
 import Bundle from '../assets/bundle.json'
 import { createTelescope, defaultTelescopeDescriptor } from './telescope.js'
 import type { ErrorMessage, InfoMessage, InitMessage, Message, ReadyMessage, ResponseMessage } from './types.js'
-import { addWorkerEventListener, createWorkerController, getStateFromWorker, initWorker, sendInputToWorker, startWorker, stopWorker } from './controller.js'
+import { addWorkerEventListener, createWorkerController, debugWorker, getDepthImage, getStateFromWorker, initWorker, sendInputToWorker, startWorker, stopWorker } from './controller.js'
 import { RatiteError, explainError, formatErrorType } from './ratite/error.js'
 const { sin, cos, log, sqrt, min, max, random, PI } = Math
+glMatrix.setMatrixArrayType(Array)
 
 const MOUSE_SENSITIVITY = 0.001
 const CAMERA_HEIGHT = 2
@@ -32,87 +33,6 @@ const tempMatrixTransform: MatrixDescriptor = {
   matrix: tempMat4_1,
 }
 
-type SourceSpec = [
-  number,  // X
-  number,  // Y
-  number,  // Brightness
-  boolean, // Is "positive" summing source
-] 
-const sources: SourceSpec[] = []
-for(let i=0; i<10; i++) {
-  let x = (random()**2) * PI/1.5  // 3 - log(random()*1000)/Math.log(10)
-  if(random() > 0.5) x = -x
-
-  let y = (random()**2) * PI/2
-  if(random() > 0.5) y = -y
-
-  sources.push([
-    x,                  // u
-    y,                  // v
-    10 + random()*10,        // a
-    random() > 0.5,     // light/dark
-  ])
-}
-
-function* layerGen(): Iterator<Sky.LayerData> {
-  let count = 0
-  while(true) {
-    const angle = random()*2*PI - PI
-    const maxFreq = min(500, sqrt(count ** 1.5))
-    const freq = max(1.0, random() * maxFreq)
-    yield sources.map(([X,Y,A,isPositive]) => {
-      let B = isPositive ? 0 : PI
-      let phase = freq * (X*cos(angle) + Y*sin(angle)) + B
-      return [freq, A, angle, phase]
-    })
-    count++
-  }
-}
-
-
-/** return true to force a repaint. */
-function updateWorldState(dT: number, sceneGraph: SceneGraph): boolean {
-  const amount = dT * 0.005
-  const universe: Universe = app.universe
-  //mat4.fromXRotation(tempMat4_1, -amount * universe.localBodies.earth.angularVelocity)
-  //mat4.multiply(tempMat4_1, app.earthNode.transform, tempMat4_1)
-  //setNodeTransform(app.earthNode, tempMat4_1, sceneGraph)
-
-  //mat4.fromXRotation(tempMat4_1, -amount)
-  //mat4.multiply(tempMat4_1, tempMat4_1, app.moonNode.transform)
-  //setNodeTransform(app.moonNode, tempMat4_1, sceneGraph)
-
-  //mat4.fromYRotation(tempMat4_1, amount*1)
-  //mat4.multiply(tempMat4_1, app.sphereNode.transform, tempMat4_1)
-  //setNodeTransform(app.sphereNode, tempMat4_1, sceneGraph)
-
-  //mat4.fromYRotation(tempMat4_1, amount*1)
-  //mat4.multiply(tempMat4_1, app.cameraNode.transform, tempMat4_1)
-  //setNodeTransform(app.cameraNode, tempMat4_1, sceneGraph)
-
-  return true
-}
-
-async function initSkyVis(gpu: GPUContext): Promise<SkyModelState> {
-  const visSource = layerGen()
-  const visState = await Sky.create(
-    1024, // window.visualViewport?.width ?? 1,
-    1024, //window.visualViewport?.height ?? 1,
-    20 * 2**20,
-    sources.length,
-    visSource,
-    gpu
-  )
-  const skyEntity = await Sky.createSkyRenderer(visState.texture, gpu)
-  gpu.entities.push(skyEntity)
-  return { visSource, visState, skyEntity }
-}
-
-type SkyModelState = {
-  visSource: Iterator<Sky.LayerData, any, undefined>,
-  visState: Sky.VisGenState,
-  skyEntity: Renderable,
-}
 
 async function main(): Promise<void> {
   const elems = {
@@ -224,15 +144,40 @@ async function main(): Promise<void> {
         break
       case 'Backspace':
         //getAtlasAsImage()
+        const image = await getDepthImage(0, worker)
+        displayImageBitmap(image)
         break
       case 'KeyZ':
         getStateFromWorker(worker)
         break
+      case 'Delete':
+        debugWorker(worker)
+        break
+
       default:
         //console.log(ev.code)
         break
     }
   })
+
+  /** Display an imagebitmap in a new window */
+  function displayImageBitmap(imageBitmap: ImageBitmap) {
+    const canvas = document.createElement('canvas')
+    canvas.width = imageBitmap.width
+    canvas.height = imageBitmap.height
+    canvas.style.width  = `${imageBitmap.width}px`
+    canvas.style.height = `${imageBitmap.height}px`
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(imageBitmap, 0, 0)
+    const container = document.createElement('div')
+    container.style.width  = `${imageBitmap.width}px`
+    container.style.height = `${imageBitmap.height}px`
+    container.style.position = 'absolute'
+    container.style.top  = '0px' // `calc(50% - ${imageBitmap.height/2}px)`
+    container.style.left = '0px' // `calc(50% - ${imageBitmap.width/2}px)`
+    container.appendChild(canvas)
+    document.body.appendChild(container)
+  }
 
 //  async function getAtlasAsImage() {
 //    const imageBitmap = await getLayerAsImageBitmap(0, 3, renderer.atlas, gpu.device)

@@ -2,24 +2,23 @@ import type {
   CameraNode, DrawCallDescriptor, GPUContext, LightSourceNode,
   LightSourceNodeDescriptor, Mat4, Model, ModelNode, Node, NodeDescriptor,
   Quat, Renderer, Scene, SceneGraph, SceneGraphDescriptor, TransformDescriptor,
-  TransformNode, Vec2, Vec3, Vec4, View, ViewDescriptor
+  TransformNode, Vec2, Vec3, Vec4, View, ProjectionDescriptor, DirtyFlag, MeshResource
 } from "./types"
 import * as Skybox from './skybox.js'
 import {createCamera, createFirstPersonCamera} from './camera.js'
-import {mat4, quat, glMatrix, vec4} from 'gl-matrix'
-import {activateInstance, addInstance, deactivateInstance, registerAllocation, serialiseInstanceData, updateInstanceData} from "./instance.js"
+import {mat4, quat, glMatrix, vec4, vec3} from 'gl-matrix'
+import {activateInstance, addInstance, deactivateInstance, registerAllocation, syncInstanceBuffers, updateInstanceData} from "./instance.js"
 import {getMeshById, getMeshByName} from "./mesh.js"
-import {INSTANCE_RECORD_SIZE, UNIFORM_BUFFER_OFFSET_PROJECTION, UNIFORM_BUFFER_OFFSET_VIEW} from "./constants.js"
-import {arraySet, latLonToUnitVec} from "./common.js"
-import {createGeometryBindGroup, createMaterialsBindGroup, createMainUniformBuffer, createShadowMapBindGroup} from "./pipeline.js"
+import {UNIFORM_BUFFER_OFFSET_PROJECTION, UNIFORM_BUFFER_OFFSET_VIEW} from "./constants.js"
+import {DirtyFlags, INITIAL_DIRTY_FLAGS, expandBoundingVolume, identityMatrix, latLonToUnitVec, resetBoundingVolume, transformedBoundingVolume} from "./common.js"
+import {createGeometryBindGroup, createMaterialsBindGroup, createMainUniformBuffer} from "./pipeline.js"
 import {activateLightSource, applyLightSourceDescriptor, createLightingState, createLightSource, deactivateLightSource} from "./lighting.js"
 import { useMaterialByName } from "./material.js"
-import { createShadowMapper } from "./shadow.js"
+import { calculateLightProjection, createShadowMap, updateShadowMap } from "./shadow.js"
+import { RatiteError } from "./error.js"
 const { PI } = Math
 glMatrix.setMatrixArrayType(Array)
 
-const instanceDataBuffer = new ArrayBuffer(INSTANCE_RECORD_SIZE)
-const instanceDataBufferF32 = new Float32Array(instanceDataBuffer)
 let sceneGraphCount = 0
 
 /** Create a scene. */
@@ -51,7 +50,6 @@ export function createSceneGraph(
   const uniformBuffer = createMainUniformBuffer(renderer.device)
   const uniformData = new ArrayBuffer(uniformBuffer.size)
   const lightingState = createLightingState(lightSourceCapacity, renderer.device)
-  const shadowMapState = createShadowMapper(16, [1024, 1024], renderer.device)
   const geometryBindGroup = createGeometryBindGroup(
     uniformBuffer,
     renderer.instanceAllocator.storageBuffer,
@@ -64,25 +62,28 @@ export function createSceneGraph(
       renderer.mainSampler,
       renderer.pipelineLayouts,
       renderer.device)
-  const shadowMapBindGroup = createShadowMapBindGroup(
-    shadowMapState.texture,
-    renderer.pipelineLayouts,
-    renderer.device)
   const rootNode: TransformNode = {
-    nodeType:  'transform',
-    name:      'root',
-    transform: mat4.create() as Mat4,
-    parent:    null,
-    root:      null,
-    children:  [],
-    visible:   true,
+    nodeType:        'transform',
+    name:            'root',
+    transform:       mat4.create() as Mat4,
+    parent:          null,
+    root:            null,
+    children:        [],
+    visible:         true,
+    dirty:           INITIAL_DIRTY_FLAGS,
+    _worldTransform: mat4.create() as Mat4,
+    _boundingVolume: {
+      min: vec3.create() as Vec3,
+      max: vec3.create() as Vec3,
+    },
   }
   rootNode.root = rootNode
   return {
     renderer:           renderer,
     root:               rootNode,
     nodes:              [],
-    drawCalls:          [],
+    forwardDrawCalls:   [],
+    depthPassDrawCalls: [],
     models:             {},
     nextDrawCallId:     0,
     views:              {},
@@ -91,10 +92,8 @@ export function createSceneGraph(
     uniformFloats:      new Float32Array(uniformData),
     uniformView:        new DataView(uniformData),
     lightingState:      lightingState,
-    shadowMapState:     shadowMapState,
     geometryBindGroup:  geometryBindGroup,
     materialsBindGroup: materialsBindGroup,
-    shadowMapBindGroup: shadowMapBindGroup,
   }
 }
 
@@ -111,6 +110,7 @@ export function createSceneGraphFromDescriptor(
         modelDescriptor.name,
         modelDescriptor.mesh,
         modelDescriptor.pipeline,
+        modelDescriptor.metaMaterial,
         modelDescriptor.maxInstances,
         sceneGraph)
   }
@@ -118,8 +118,9 @@ export function createSceneGraphFromDescriptor(
     for(let viewDescriptor of descriptor.views)
       createSceneView(
         viewDescriptor.name, 
+        sceneGraph,
         viewDescriptor.projection, 
-        sceneGraph)
+        )
   }
   if(descriptor.root) {
     const root = createNodeFromDescriptor(descriptor.root, sceneGraph)
@@ -193,7 +194,7 @@ function deactivateNode(node: Node, sceneGraph: SceneGraph): void {
   switch(node.nodeType) {
   case 'model':
     const { instanceAllocator, device } = sceneGraph.renderer
-    const drawCall = sceneGraph.drawCalls[node.drawCallId]
+    const drawCall = sceneGraph.forwardDrawCalls[node.drawCallId]
     deactivateInstance(node.instanceId, instanceAllocator, device)
     drawCall.instanceCount--
     break
@@ -221,7 +222,7 @@ function activateNode(node: Node, sceneGraph: SceneGraph): void {
   switch(node.nodeType) {
   case 'model':
     const { instanceAllocator, device } = sceneGraph.renderer
-    const drawCall = sceneGraph.drawCalls[node.drawCallId]
+    const drawCall = sceneGraph.forwardDrawCalls[node.drawCallId]
     activateInstance(node.instanceId, instanceAllocator, device)
     drawCall.instanceCount++
     break
@@ -240,6 +241,7 @@ function activateNode(node: Node, sceneGraph: SceneGraph): void {
 /** Set the transform of a node, overwriting any previous transform. */
 export function setTransform(transform: TransformDescriptor, node: Node): void {
   computeMatrix(transform, node.transform)
+  setDirty(DirtyFlags.ALL, node)
 }
 
 /** Set the translation component of a node's transform matrix. */
@@ -247,6 +249,7 @@ export function setTranslation(translation: Vec3, node: Node): void {
   node.transform[12] = translation[0]
   node.transform[13] = translation[1]
   node.transform[14] = translation[2]
+  setDirty(DirtyFlags.ALL, node)
 }
 
 const applyTransform_tempMat4: Mat4 = mat4.create() as Mat4
@@ -256,6 +259,7 @@ export function applyTransform(transform: TransformDescriptor, node: Node): void
   const initial = node.transform
   const matrix = computeMatrix(transform, applyTransform_tempMat4)
   mat4.multiply(node.transform, initial, matrix)
+  setDirty(DirtyFlags.ALL, node)
 }
 
 const applyPreTransform_tempMat4: Mat4 = mat4.create() as Mat4
@@ -263,8 +267,9 @@ const applyPreTransform_tempMat4: Mat4 = mat4.create() as Mat4
 /** Apply a transformation `A` to a node's existing transform matrix `B` by the matrix multiplication `A*B`. */
 export function applyPreTransform(transform: TransformDescriptor, node: Node): void {
   const initial = node.transform
-  const matrix = computeMatrix(transform, applyTransform_tempMat4)
+  const matrix = computeMatrix(transform, applyPreTransform_tempMat4)
   mat4.multiply(node.transform, matrix, initial)
+  setDirty(DirtyFlags.ALL, node)
 }
 
 const computeMatrix_tempQuat: Quat = quat.create() as Quat
@@ -278,8 +283,13 @@ export function computeMatrix(transform: TransformDescriptor, out: Mat4): Mat4 {
        out[i] = transform.matrix[i]
      return out
   case 'trs':
+    if('rotateQuat' in transform && 'rotateEuler' in transform)
+      throw new RatiteError('InvalidArgument', 'Transform descriptors must not specify both a quaternion and euler rotation.')
+    const rotation: Vec4 = transform.rotateQuat ?? 
+      ('rotateEuler' in transform ? quat.fromEuler([0,0,0,0], ...transform.rotateEuler) as Quat : [0,0,0,1])
+
     return mat4.fromRotationTranslationScale(out, 
-      transform.rotation    ?? [0, 0, 0, 1], 
+      rotation, 
       transform.translation ?? [0, 0, 0], 
       transform.scale       ?? [1, 1, 1]
     ) as Mat4
@@ -318,21 +328,24 @@ export function cloneNode(node: Node, sceneGraph: SceneGraph): Node {
   case 'transform':
     break
   case 'light':
+    // TODO: clone light source
     break
   }
   const clone = createNodeFromDescriptor(descriptor, sceneGraph)
   for(let child of node.children) {
     attachNode(cloneNode(child, sceneGraph), clone, sceneGraph)
   }
+  setDirty(DirtyFlags.ALL, clone)
   return clone
 }
 
 
 /** Create a view. */
 export function createSceneView(
-    name:       string, 
-    descriptor: ViewDescriptor, 
-    sceneGraph: SceneGraph): View {
+    name:                  string, 
+    sceneGraph:            SceneGraph,
+    projectionDescriptor?: ProjectionDescriptor, 
+    ): View {
   if(name in sceneGraph.views) {
     throw new Error(`View ${name} already exists.`)
   }
@@ -341,28 +354,31 @@ export function createSceneView(
     projection: mat4.create() as Mat4,
     viewMatrix: mat4.create() as Mat4,
     node:       null,
+    shadowMap:  null,
   }
-  if(descriptor.type === 'perspective') {
-    const aspect = descriptor.aspect == 'auto' 
+  if(!projectionDescriptor) {
+    // TODO: worth getting this from the light source now?
+  } else if(projectionDescriptor.type === 'perspective') {
+    const aspect = projectionDescriptor.aspect == 'auto' 
                  ? sceneGraph.renderer.context.aspect
-                 : descriptor.aspect
-    const far: number = descriptor.far === 'Infinity' ? Infinity : descriptor.far
+                 : projectionDescriptor.aspect
+    const far: number = projectionDescriptor.far === 'Infinity' ? Infinity : projectionDescriptor.far
     mat4.perspectiveZO(
       view.projection,
-      descriptor.fovy * PI/180,
+      projectionDescriptor.fovy * PI/180,
       aspect,
-      descriptor.near,
+      projectionDescriptor.near,
       far,
     )
-  } else if(descriptor.type === 'orthographic') {
+  } else if(projectionDescriptor.type === 'orthographic') {
     mat4.ortho(
       view.projection,
-      descriptor.left,
-      descriptor.right,
-      descriptor.bottom,
-      descriptor.top,
-      descriptor.near,
-      descriptor.far,
+      projectionDescriptor.left,
+      projectionDescriptor.right,
+      projectionDescriptor.bottom,
+      projectionDescriptor.top,
+      projectionDescriptor.near,
+      projectionDescriptor.far,
     )
   }
   sceneGraph.views[name] = view
@@ -398,17 +414,24 @@ export function createModelNode(
   )
   
   const node: ModelNode = {
-    nodeType:      'model',
-    parent:        null,
-    root:          null,
-    transform:     mat4.create() as Mat4,
-    children:      [],
-    instanceId:    instanceId,
-    modelName:     modelName,
-    drawCallId:    model.drawCallId,
-    visible:       true,
-    material:      materialName,
-    _instanceData: instanceData
+    nodeType:        'model',
+    parent:          null,
+    root:            null,
+    transform:       mat4.create() as Mat4,
+    children:        [],
+    instanceId:      instanceId,
+    modelName:       modelName,
+    drawCallId:      model.drawCallId,
+    visible:         true,
+    material:        materialName,
+    _instanceData:   instanceData,
+    dirty:           INITIAL_DIRTY_FLAGS,
+    _worldTransform: mat4.create() as Mat4,
+    _boundingVolume: {
+      min: vec3.create() as Vec3,
+      max: vec3.create() as Vec3,
+    },
+
   }
   sceneGraph.nodes.push(node)
   return node
@@ -423,17 +446,23 @@ export function createCameraNode(viewName: string | null, sceneGraph: SceneGraph
     }
     view = sceneGraph.views[viewName]
     if(view.node !== null) {
-      throw new Error(`View ${viewName} already has a camera.`)
+      throw new Error(`View ${viewName} is already in use.`)
     }
   }
   const node: CameraNode = {
-    nodeType:   'camera',
-    parent:     null,
-    root:       null,
-    transform:  mat4.create() as Mat4,
-    children:   [],
-    view:       view,
-    visible:    true,
+    nodeType:        'camera',
+    parent:          null,
+    root:            null,
+    transform:       mat4.create() as Mat4,
+    children:        [],
+    view:            view,
+    visible:         true,
+    dirty:           INITIAL_DIRTY_FLAGS,
+    _worldTransform: mat4.create() as Mat4,
+    _boundingVolume: {
+      min: vec3.create() as Vec3,
+      max: vec3.create() as Vec3,
+    },
   }
   sceneGraph.nodes.push(node)
   if(view)
@@ -451,31 +480,62 @@ export function createLightSourceNode(
     type: descriptor.lightType,
   })
 
+  let view: View | null = null
+  let viewName = descriptor.view
+  if(viewName) {
+    if(!(viewName in sceneGraph.views)) {
+      throw new RatiteError('NotFound', `View ${viewName} does not exist.`)
+    }
+    view = sceneGraph.views[viewName]
+    if(view.node !== null) {
+      throw new RatiteError('ResourceBusy', `View ${viewName} is already in use.`)
+    }
+  }
+
   const node: LightSourceNode = {
-    nodeType:    'light',
-    parent:      null,
-    root:        null,
-    transform:   mat4.create() as Mat4,
-    children:    [],
-    lightSource: lightSource,
-    visible:     true,
-    castShadows: descriptor.castShadows || false,
-    view:        null,
+    nodeType:        'light',
+    parent:          null,
+    root:            null,
+    transform:       mat4.create() as Mat4,
+    children:        [],
+    lightSource:     lightSource,
+    visible:         true,
+    castShadows:     descriptor.castShadows || false,
+    view:            view,
+    dirty:           INITIAL_DIRTY_FLAGS,
+    _worldTransform: mat4.create() as Mat4,
+    _boundingVolume: {
+      min: vec3.create() as Vec3,
+      max: vec3.create() as Vec3,
+    },
   }
 
   sceneGraph.nodes.push(node)
+  if(view) {
+    view.node = node
+  }
+  if(descriptor.castShadows && view) {
+    view.shadowMap = createShadowMap(lightSource, sceneGraph.renderer.shadowMapper)
+    calculateLightProjection(lightSource, view.projection)
+  }
   return node
 }
 
 /** Create a transform node. */
 export function createTransformNode(sceneGraph: SceneGraph): Node {
   const node: TransformNode = {
-    nodeType:   'transform',
-    parent:     null,
-    root:       null,
-    transform:  mat4.create() as Mat4,
-    children:   [],
-    visible:    true,
+    nodeType:        'transform',
+    parent:          null,
+    root:            null,
+    transform:       mat4.create() as Mat4,
+    children:        [],
+    visible:         true,
+    dirty:           INITIAL_DIRTY_FLAGS,
+    _worldTransform: mat4.create() as Mat4,
+    _boundingVolume: {
+      min: vec3.create() as Vec3,
+      max: vec3.create() as Vec3,
+    },
   }
   sceneGraph.nodes.push(node)
   return node
@@ -483,18 +543,21 @@ export function createTransformNode(sceneGraph: SceneGraph): Node {
 
 /** Register a model with the scene graph. */
 export function registerSceneGraphModel(
-    name:         string,
-    meshName:     string,
-    pipelineName: string,
-    maxInstances: number,
-    sceneGraph:   SceneGraph): void {
+    name:             string,
+    meshName:         string,
+    pipelineName:     string,
+    metaMaterialName: string,
+    maxInstances:     number,
+    sceneGraph:       SceneGraph): void {
 
   const { instanceAllocator, meshStore } = sceneGraph.renderer
   const allocationId = registerAllocation(maxInstances, instanceAllocator)
   const allocation = instanceAllocator.allocations[allocationId]
   const mesh = getMeshByName(meshName, meshStore)
   const drawCallId = sceneGraph.nextDrawCallId
-  const pipeline = sceneGraph.renderer.pipelines[pipelineName]
+  const metaMaterial = sceneGraph.renderer.metaMaterials.metaMaterials.get(metaMaterialName)
+  if(!metaMaterial)
+    throw new RatiteError('NotFound', `Invalid meta-material: ${metaMaterialName}`)
   const model: Model = { 
     id: 0, 
     name, 
@@ -502,8 +565,9 @@ export function registerSceneGraphModel(
     allocationId,
     drawCallId,
     pipelineName,
+    metaMaterial,
   }
-  const drawCall: DrawCallDescriptor = {
+  const forwardDrawCall: DrawCallDescriptor = {
     id:              drawCallId,
     label:           `SceneGraph[${sceneGraph.label}]::DrawCall#${drawCallId}[${name}]`,
     vertexBuffer:    meshStore.vertexBuffer,
@@ -512,7 +576,7 @@ export function registerSceneGraphModel(
     instanceBuffer:  instanceAllocator.instanceBuffer,
     instancePointer: allocation.instanceIndex * 4,
     instanceCount:   0,
-    pipeline:        pipeline,
+    pipeline:        metaMaterial.pipelines.forward,
     indexPointer:    mesh.indexPointer,
     indexBuffer:     meshStore.indexBuffer,
     indexOffset:     mesh.indexOffset,
@@ -520,14 +584,14 @@ export function registerSceneGraphModel(
     bindGroups: [
       sceneGraph.geometryBindGroup, 
       sceneGraph.materialsBindGroup,
-      sceneGraph.shadowMapBindGroup,
+      sceneGraph.renderer.shadowMapper.bindGroup,
     ],
+    metaMaterial:    metaMaterial,
   }
-  
   
   sceneGraph.nextDrawCallId++
   sceneGraph.models[name] = model
-  sceneGraph.drawCalls.push(drawCall)
+  sceneGraph.forwardDrawCalls.push(forwardDrawCall)
 }
 
 /** Attach a node to a parent node.
@@ -535,10 +599,11 @@ export function registerSceneGraphModel(
  * The attachment process is as follows:
  * 1. Set the node's parent property to the parent.
  * 2. Add the node to the parent's children list.
- * 3. If the parent's root property is null, return.
- * 4. Recursively update the root for the node subtree.
- * 5. If any ancestor node is hidden, return.
- * 6. Recursively activate the node subtree for drawing. 
+ * 3. Mark the node as dirty.
+ * 4. If the parent's root property is null, return.
+ * 5. Recursively update the root for the node subtree.
+ * 6. If any ancestor node is hidden, return.
+ * 7. Recursively activate the node subtree for drawing. 
  */
 export function attachNode(
   node: Node,
@@ -550,6 +615,8 @@ export function attachNode(
   
   node.parent = parent
   parent.children.push(node)
+
+  setDirty(DirtyFlags.ALL, node)
 
   if(!parent.root)
     return
@@ -566,19 +633,22 @@ export function attachNode(
  * 
  * If the node is attached to the scene graph, the whole node subtree has its
  * root property reset to null. If the node is visible, the whole node subtree
- * is deactivated for drawing.
+ * is deactivated for drawing. The enitre subtree is marked dirty.
  */
 export function detachNode(node: Node, sceneGraph: SceneGraph): void {
   if(!node.parent)
     throw new Error('Node is not attached to a parent node.')
 
+  setDirty(DirtyFlags.ALL, node, false)
+
+  const parent = node.parent
   // Remove parent/child relationship
-  const index = node.parent.children.indexOf(node)
+  const index = parent.children.indexOf(node)
   if(index === -1)
     throw new Error('Scene graph integrity error: node is not a child of its parent.')
-  node.parent.children.splice(index, 1)
+  parent.children.splice(index, 1)
   node.parent = null
-
+  
   if(!node.root)
     return
   
@@ -625,18 +695,41 @@ export function getChildNodeByName(name: string, node: Node): Node | null {
   return null
 }
 
-/** Update GPU buffer matrices of all the visible nodes in the scene graph. 
+/** Update modelView matrices of all the visible nodes in the scene graph for
+ * the given view.
  * 
  * Do this at the start of a render pass to put all the models and lights in
  * view space.
  */
 export function prepareForRender(view: View, sceneGraph: SceneGraph): void {
-  const viewMatrix = getViewMatrix(view)
+  let viewMatrix = getViewMatrix(view)
+  
+  if(view.shadowMap) {
+    const lightWorldPos = getNodePosition(view.node)
+
+    if(view.shadowMap.lightSource.type == 'directional') {
+
+    } else {
+      mat4.lookAt(viewMatrix, lightWorldPos, [0,0,0], [0,1,0]) as Mat4
+    }
+
+    //mat4.lookAt(viewMatrix, lightWorldPos, [0,0,0], [0,1,0])
+    //console.log(cameraWorldPos)
+    const cameraViewMatrix = getViewMatrix(sceneGraph.views.default)
+
+    mat4.invert(cameraViewMatrix, cameraViewMatrix)
+    mat4.mul(view.shadowMap._matrix, viewMatrix, cameraViewMatrix)
+    mat4.mul(view.shadowMap._matrix, view.projection, view.shadowMap._matrix)
+
+    updateShadowMap(view.shadowMap, sceneGraph.renderer.shadowMapper)
+  }
+
   sceneGraph.uniformFloats.set(viewMatrix, UNIFORM_BUFFER_OFFSET_VIEW / 4)
   sceneGraph.uniformFloats.set(view.projection, UNIFORM_BUFFER_OFFSET_PROJECTION / 4)
   view.viewMatrix = viewMatrix
   updateModelViews(sceneGraph.root, mat4.create() as Mat4, viewMatrix, sceneGraph)
   sceneGraph.renderer.device.queue.writeBuffer(sceneGraph.uniformBuffer, 0, sceneGraph.uniformData)
+  syncInstanceBuffers(sceneGraph.renderer.instanceAllocator, sceneGraph.renderer.device)
 }
 
 let updateModelViews_tempMat4: Mat4 = mat4.create() as Mat4
@@ -711,6 +804,20 @@ export function getViewMatrix(view: View): Mat4 {
   return cameraModelMatrix
 }
 
+/** Calculate the model-view matrix for a node. */
+export function getModelViewMatrix(node: Node, view: View, out: Mat4 = mat4.create() as Mat4): Mat4 {
+  const modelMatrix = getModelMatrix(node)
+  const viewMatrix = getViewMatrix(view)
+  mat4.multiply(out, viewMatrix, modelMatrix)
+  return out 
+}
+
+/** Calculate the position of a node in world space. */
+export function getNodePosition(node: Node): Vec3 {
+  const modelMatrix = getModelMatrix(node)
+  return [modelMatrix[12], modelMatrix[13], modelMatrix[14]]
+}
+
 export function checkProjection(modelView: Mat4, projection: Mat4): Mat4 {
   //const cube = [
   //  [-1,-1,-1, 1],
@@ -760,5 +867,131 @@ export function checkProjection(modelView: Mat4, projection: Mat4): Mat4 {
   unproj[15] = 1
 
   return unproj as Mat4
+}
+
+/** Clear a dirty flag on a node. */
+export function clearDirty(flag: DirtyFlag, node: Node): void {
+  node.dirty &= ~flag
+}
+
+/** Set a dirty flag on a node.
+ * 
+ * This will also set the dirty flag on all ancestors and optionally on all
+ * descendants.
+ */
+export function setDirty(flag: DirtyFlag, node: Node, markDescendants: boolean = true): void {
+  node.dirty |= flag
+  if(markDescendants)
+    for(const child of node.children)
+      setDirty(flag, child)
+  let ancestor = node.parent
+  while(ancestor) {
+    ancestor.dirty |= flag
+    ancestor = ancestor.parent
+  }
+}
+
+/** Check if a node has a dirty flag set. */
+export function isDirty(flag: DirtyFlag, node: Node): boolean {
+  return (node.dirty & flag) === flag
+}
+
+/** Get the topmost ancestor of a node.
+ * 
+ * For nodes attached to the scene graph, this is the scene root.
+ */
+export function getRoot(node: Node): Node {
+  if(node.root)
+    return node.root
+  else if(!node.parent)
+    return node
+  else
+    return getRoot(node.parent)
+}
+
+/** Get the bounding box of a node. */
+//export function getBoundingVolume(node: Node): BoundingVolume {
+//  if(!isDirty(DirtyFlags.BOUNDING_VOLUME, node))
+//    return node._boundingVolume
+//  
+//  const root = getRoot(node)
+//}
+
+
+/** Update dirty world transform matrices.
+ * 
+ * Calling this function updates the world transform matrices for the entire
+ * tree starting at the topmost ancestor of the node, excluding hidden nodes
+ * and nodes not marked as dirty.
+ */
+export function updateWorldTransforms(node: Node): void {
+  const root = getRoot(node)
+  _updateWorldTransforms(root, identityMatrix)
+}
+
+/** Internal helper function for updateWorldTransforms. */
+function _updateWorldTransforms(node: Node, current: Mat4): void {
+  if(!isDirty(DirtyFlags.WORLD_TRANSFORM, node) || !node.visible)
+    return
+  mat4.multiply(node._worldTransform, current, node.transform)
+  for(const child of node.children)
+    _updateWorldTransforms(child, node._worldTransform)
+  clearDirty(DirtyFlags.WORLD_TRANSFORM, node)
+}
+
+/** Update dirty bounding volumes.
+ * 
+ * Calling this function updates the bounding volumes for the entire tree
+ * starting at the topmost ancestor of the node, excluding hidden nodes and
+ * nodes not marked as dirty.
+ * 
+ * The tree should be updated for world transforms before calling this
+ * function, otherwise a world transform update will be triggered.
+ */
+export function updateBoundingVolumes(node: Node, scene: SceneGraph): void {
+  const root = getRoot(node)
+  if(isDirty(DirtyFlags.WORLD_TRANSFORM, root)) {
+    console.warn('Early world transform update triggered by updateBoundingVolume()')
+    updateWorldTransforms(root)
+  }
+  _updateBoundingVolumes(root, scene)
+}
+
+/** Internal helper function for updateBoundingVolumes. */
+function _updateBoundingVolumes(node: Node, scene: SceneGraph): void {
+  if(!isDirty(DirtyFlags.BOUNDING_VOLUME, node) || !node.visible)
+    return
+  
+  if(node.nodeType === 'model') {
+    const mesh = getMesh(node, scene)
+    transformedBoundingVolume(mesh.boundingVolume, node._worldTransform, node._boundingVolume)
+  } else {
+    resetBoundingVolume(node._boundingVolume)
+  }
+
+  for(const child of node.children) {
+    _updateBoundingVolumes(child, scene)
+    expandBoundingVolume(node._boundingVolume, child._boundingVolume)
+  }
+
+  clearDirty(DirtyFlags.BOUNDING_VOLUME, node)
+}
+
+
+/** Get the mesh of a model node. */
+export function getMesh(node: ModelNode, scene: SceneGraph): MeshResource {
+  const model = getModel(node, scene)
+  const mesh = getMeshById(model.meshId, scene.renderer.meshStore)
+  if(!mesh)
+    throw new RatiteError('NotFound', `Mesh ${model.meshId} not found`)
+  return mesh
+}
+
+/** Get the model of a model node. */
+export function getModel(node: ModelNode, scene: SceneGraph): Model {
+  const model = scene.models[node.modelName]
+  if(!model)
+    throw new RatiteError('NotFound', `Model ${node.modelName} not found`)
+  return model
 }
 

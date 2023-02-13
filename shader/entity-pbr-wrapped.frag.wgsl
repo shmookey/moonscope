@@ -53,13 +53,22 @@ struct AtlasData {
   data: array<AtlasRecord>,
 }
 
-@group(0) @binding(0) var<uniform> uniforms:     Uniforms;
-@group(0) @binding(1) var<storage> instanceData: InstanceData;
-@group(0) @binding(2) var<storage> lighting:     Lighting;
-@group(1) @binding(0) var<storage> materialData: MaterialData;
-@group(1) @binding(1) var<storage> atlasData:    AtlasData;
-@group(1) @binding(2) var          mySampler:    sampler;
-@group(1) @binding(3) var          atlas:        texture_2d_array<f32>;
+struct ShadowData {
+  data: array<mat4x4<f32>>,
+}
+
+@group(0) @binding(0) var<uniform> uniforms:      Uniforms;
+@group(0) @binding(1) var<storage> instanceData:  InstanceData;
+@group(0) @binding(2) var<storage> lighting:      Lighting;
+@group(1) @binding(0) var<storage> materialData:  MaterialData;
+@group(1) @binding(1) var<storage> atlasData:     AtlasData;
+@group(1) @binding(2) var          mySampler:     sampler;
+@group(1) @binding(3) var          atlas:         texture_2d_array<f32>;
+@group(2) @binding(0) var          shadowAtlas:   texture_depth_2d_array;
+@group(2) @binding(1) var          shadowSampler: sampler_comparison;
+@group(2) @binding(2) var<storage> shadowData:    ShadowData;
+override shadowDepthTextureSize: f32 = 1024.0;
+
 
 fn attenuate(dist: f32, attenuation: vec4<f32>) -> f32 {
   return 1.0 / (attenuation.x + 
@@ -67,63 +76,9 @@ fn attenuate(dist: f32, attenuation: vec4<f32>) -> f32 {
                (attenuation.z * dist * dist));
 }
 
-//fn getDiffuse(light: Light, direction: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
-//  let diffuse  = max(dot(direction, normal), 0.0);
-//  return light.diffuse.rgb * diffuse;
-//}
-//
-//fn getSpecular(light: Light, direction: vec3<f32>, viewDirection: vec3<f32>, normal: vec3<f32>, shininess: f32) -> vec3<f32> {
-//  let halfway   = normalize(direction + viewDirection);
-//  let specular = pow(max(dot(normal, halfway), 0), 32);
-//  return light.specular.rgb * specular * shininess;
-//}
-//
-//fn getMappedNormal(modelNormal: vec3<f32>, texelNormal: vec3<f32>, tangent: vec3<f32>, bitangent: vec3<f32>) -> vec3<f32> {
-//  let tbn = mat3x3<f32>(tangent, bitangent, modelNormal);
-//  return normalize(tbn * texelNormal);
-//}
-//
-//fn getLighting(
-//    position:      vec3<f32>, 
-//    normal:        vec3<f32>, 
-//    tangent:       vec3<f32>, 
-//    bitangent:     vec3<f32>, 
-//    texelNormal:   vec4<f32>, 
-//    texelSpecular: vec2<f32>,
-//    lightLevel:    vec4<f32>,
-//    lightDir:      vec3<f32>,
-//    materialSlot:  u32) -> vec3<f32> {
-//
-//  var lightValue = vec3<f32>(0);
-//  let precalculatedLightCount: u32 = 1; // todo: support more
-//  let material = materialData.data[materialSlot];
-//  for (var i = 0u; i < precalculatedLightCount; i = i + 1u) {
-//    let light = lighting.data[i];
-//    let direction = lightDir;
-//    let level = lightLevel[i]; 
-//    if(level < 0.001) {
-//      continue;
-//    }
-//    if (light.type_ == 0) {
-//      if(texelNormal.a > 0) {
-//        let mappedNormal = getMappedNormal(normal, texelNormal.xyz, tangent, bitangent);
-//        let diffuseComponent  = getDiffuse(light, direction, mappedNormal);
-//        lightValue += diffuseComponent * level;
-//        if(texelSpecular.g > 0) {
-//          let specularComponent = getSpecular(light, -position, direction, mappedNormal, texelSpecular.r);
-//          lightValue += specularComponent * level;
-//        }
-//      }
-//    }
-//  }
-//
-//  return material.ambient.xyz + lightValue;
-//}
-
 fn modw(a: f32, b: f32) -> f32 {
   return a - b * floor(a / b);
 }
-
 
 @fragment
 fn main(
@@ -178,18 +133,48 @@ fn main(
   var diffuse  = vec3<f32>(0);
   var specular = vec3<f32>(0);
   var emissive = material.emissive.rgb;
+  var visibility = 1.0;
   for (var i:u32 = 0; i < lighting.count; i = i+1) {
     let light      = lighting.data[i];
     var lightLevel = 0.0;
     var lightDir   = vec3<f32>(0);
+
+    // Get shadows
+    let shadowMatrix = shadowData.data[0];
+    let shadowCoord  = shadowMatrix * vec4<f32>(position, 1);
+    let shadowCoordN = shadowCoord.xyz / shadowCoord.w;
+    let shadowCoordS = vec3(shadowCoordN.xy * vec2(0.5,-0.5) + 0.5, shadowCoordN.z);
+
+   // var vis = 0.0;
+    if(shadowCoordS.z < 1 && shadowCoordS.x > 0 && shadowCoordS.x < 1 && shadowCoordS.y > 0 && shadowCoordS.y < 1) {  
+      var vis = 0.0;
+      let oneOverShadowDepthTextureSize = 1.0 / shadowDepthTextureSize;
+      for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+          let offset = vec2<f32>(vec2(x, y)) * oneOverShadowDepthTextureSize;
+          vis += textureSampleCompareLevel(
+            shadowAtlas, shadowSampler,
+            shadowCoordS.xy + offset, i, shadowCoordS.z - 0.002
+          );
+        }
+      }
+      vis /= 9.0;
+      visibility = vis; //visibility - (1 - vis);
+    }
+    //let shadow       = textureSample(shadowAtlas, shadowSampler, shadowCoordS.xy, i);
+    //var shadowFactor = visibility; //select(0.2, 1.0, shadow > (shadowCoordS.z-0.007));
+    //if(shadowCoordS.z >= 1) {
+    //  shadowFactor = 1;
+    //}
+
     if(light.type_ == 0) { // point light
       let path   = light.position.xyz - position;
       let dist   = length(path);
       lightDir   = normalize(path);
       lightLevel = attenuate(dist, light.attenuation);
     } else if(light.type_ == 1) { // directional light
-      lightDir   = light.direction.xyz;
-      lightLevel = 1;
+      lightDir   = -light.direction.xyz;
+      lightLevel = 1.0;
     } else if(light.type_ == 2) { // spot light
       let path      = light.position.xyz - position;
       let dir       = normalize(path);
@@ -203,7 +188,7 @@ fn main(
       lightLevel    = intensity * attenuate(dist, light.attenuation);
     }
     if(material.ambient.a > 0 && light.ambient.a > 0) {
-      ambient += light.ambient.rgb * material.ambient.rgb * lightLevel;
+      ambient += light.ambient.rgb * material.ambient.rgb * materialDiffuse.rgb * lightLevel;
     }
     if(material.diffuse.a > 0 && materialDiffuse.a > 0 && light.diffuse.a > 0) {
       let diff = max(dot(lightDir, normal), 0);
@@ -216,7 +201,7 @@ fn main(
     }
   }
 
-  let colour = ambient + diffuse + specular + emissive;
+  let colour = ambient + (diffuse + specular) * visibility + emissive;
   var alpha: f32 = max(materialDiffuse.a, material.emissive.a);
   return vec4(pow(colour, vec3(1/2.2)), alpha);
 }
