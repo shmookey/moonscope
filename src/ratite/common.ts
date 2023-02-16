@@ -22,6 +22,11 @@ export const nullBoundingVolume: BoundingVolume = {
   max: [-Infinity, -Infinity, -Infinity],
 }
 
+/** Is the bounding volume null? */
+export function isNullBoundingVolume(bv: BoundingVolume): boolean {
+  return bv.min.every((v,i) => v === Infinity && bv.max[i] === -Infinity)
+}
+
 /** Reset a bounding volume to the null bounding volume. */
 export function resetBoundingVolume(bv: BoundingVolume): void {
   bv.min[0] = bv.min[1] = bv.min[2] =  Infinity

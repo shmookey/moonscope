@@ -92,3 +92,15 @@ export async function getDepthImage(layer: number, controller: WorkerController)
   return promise
 }
 
+/** Make an arbitrary request to the worker. */
+export function sendWorkerRequest(data: any, controller: WorkerController): Promise<any> {
+  const callId = controller.nextId++
+  controller.worker.postMessage({...data, id: callId})
+  let resolver = null
+  const promise = new Promise<any>((resolve) => {
+    resolver = resolve
+  })
+  controller.callbacks[callId] = resolver
+  return promise
+}
+

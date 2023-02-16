@@ -8,7 +8,7 @@ import {createInstanceAllocator} from './instance.js'
 import {INDEX_SIZE, INSTANCE_INDEX_SIZE, UNIFORM_BUFFER_FLOATS, 
   VERTEX_SIZE} from './constants.js'
 import {createMeshStore} from './mesh.js'
-import {prepareForRender} from './scene.js'
+import {prepareForwardRender, prepareShadowRender, setSceneView} from './scene.js'
 import {updateLightingBuffer} from './lighting.js'
 import { createMaterialState } from './material.js'
 import { createMetaMaterialState } from './metamaterial.js'
@@ -121,8 +121,8 @@ export function renderView(
   renderDepthPass(sceneGraph)
 
   const commandEncoder = gpu.device.createCommandEncoder()
-  prepareForRender(sceneGraph.views.default, sceneGraph)
-  updateLightingBuffer(sceneGraph.lightingState)
+  prepareForwardRender(sceneGraph)
+  //updateLightingBuffer(sceneGraph.lightingState)
   
   gpu.renderPassDescriptor.depthStencilAttachment = {
     view: state.depthTextureView,
@@ -164,11 +164,13 @@ export function renderDepthPass(
     scene:          SceneGraph): void {
   
   const device = scene.renderer.device
+  const cameraView = scene.activeView
   for(let shadowMap of scene.renderer.shadowMapper.slots) {
     if(!shadowMap)
       continue
     const commandEncoder = device.createCommandEncoder()
-    prepareForRender(scene.views['shadow-caster-1'], scene)
+    setSceneView(scene.views['shadow-caster-1'], scene)
+    prepareShadowRender(cameraView, scene)
     const passEncoder = commandEncoder.beginRenderPass(shadowMap.renderPass)
     for(let call of scene.forwardDrawCalls) {
       if(call.instanceCount === 0)
@@ -188,6 +190,7 @@ export function renderDepthPass(
     passEncoder.end()
     device.queue.submit([commandEncoder.finish()])
   }
+  setSceneView(cameraView, scene)
 }
 
 // todo: don't pass in a scenegraph, make the scenegraph issue draw calls?

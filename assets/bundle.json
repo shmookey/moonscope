@@ -159,8 +159,15 @@
           { "type": "transform", "transform": {"type": "trs", "translation": [0, 0, 0]}, 
             "children": [
               { "name": "camera-fps", "type": "camera", "view": "default" }]},
+          { "name": "sunlight", "type": "transform", 
+            "transform": {"type": "trs", "translation": [3, 10, 3], "rotateEuler":[-45, 60, 0] },
+            "children": [
+              { "type": "model", "modelName": "point-light", "transform": {"type": "trs", "scale": [0.1, 0.1, 0.1]}, "material": "light-cube" },
+              { "type": "light", "lightType": "directional", "castShadows": true, "view": "shadow-caster-1", "attenuation": [1, 0, 0.001, 0], "ambient": [0.2, 0.2, 0.2, 1], "diffuse": [0.5, 0.5, 0.5, 1], "specular": [1, 1, 1, 1] }
+            ]},
           { "name": "floor", "type": "model", "modelName": "floor:sand" },
           { "name": "test-cube", "type": "model", "modelName": "cube", "transform": {"type": "trs", "translation": [0, 0.5, -2], "scale": [0.5,0.5,0.5]} },
+          { "name": "test-cube-2", "type": "model", "modelName": "cube", "transform": {"type": "trs", "translation": [-8, 0.5, -8], "scale": [0.5,0.5,0.5]}, "visible": false },
           { "name": "light-cube", "type": "model", "modelName": "cube", "material": "light-cube", "transform": {"type": "trs", "translation": [-15, 5, -35]} },
           { "name": "telescope", "type": "transform" },
           { "name": "antenna", "type": "transform", 
@@ -174,18 +181,13 @@
                     ]}
                 ]}
             ]
-          },
-          { "name": "directional-light-1", "type": "transform", 
-            "transform": {"type": "trs", "translation": [3, 10, 3], "rotateEuler":[-45, 60, 0] },
-            "children": [
-              { "type": "model", "modelName": "point-light", "transform": {"type": "trs", "scale": [0.1, 0.1, 0.1]}, "material": "light-cube" },
-              { "type": "light", "lightType": "directional", "castShadows": true, "view": "shadow-caster-1", "attenuation": [1, 0, 0.001, 0], "ambient": [0.2, 0.2, 0.2, 1], "diffuse": [0.5, 0.5, 0.5, 1], "specular": [1, 1, 1, 1] }
-            ]}
+          }
         ]
       },
       "views": [
         {
           "name": "default",
+          "active": true,
           "type": "camera",
           "projection": {
             "type":   "perspective",

@@ -31,9 +31,6 @@
     {"position": [ 1,-1,-1, 1], "uv": [1,0], "normal": [ 0,-1, 0, 0], "tangent": [-1, 0, 0, 0], "bitangent": [ 0, 0,-1, 0], "textures": [0,0,0,0]},
     {"position": [-1,-1, 1, 1], "uv": [0,0], "normal": [ 0,-1, 0, 0], "tangent": [-1, 0, 0, 0], "bitangent": [ 0, 0,-1, 0], "textures": [0,0,0,0]},
     {"position": [ 1,-1, 1, 1], "uv": [1,0], "normal": [ 0,-1, 0, 0], "tangent": [-1, 0, 0, 0], "bitangent": [ 0, 0,-1, 0], "textures": [0,0,0,0]}
-
-
-
   ],
   "indices":[
     0, 2, 1,
@@ -53,6 +50,9 @@
 
     21,23,20,
     20,23,22
-
-  ]
+  ],
+  "boundingVolume": {
+    "min": [-1,-1,-1],
+    "max": [ 1, 1, 1]
+  }
 }

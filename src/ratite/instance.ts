@@ -39,11 +39,12 @@
  * instance property and may be overridden by the application.
  */
 
-import type { InstanceAllocation, InstanceAllocator, InstanceData, InstanceRecord } from "./types"
+import type { InstanceAllocation, InstanceAllocator, InstanceData, InstanceRecord, Mat4 } from "./types"
 import { 
   INSTANCE_INDEX_SIZE, INSTANCE_RECORD_SIZE, INSTANCE_RECORD_OFFSET_MODELVIEW, 
   INSTANCE_RECORD_OFFSET_MATERIAL 
 } from "./constants.js"
+import { RatiteError } from "./error.js"
 
 /** Initialise the instance allocator. */
 export function createInstanceAllocator(device: GPUDevice, capacity: number): InstanceAllocator {
@@ -137,6 +138,8 @@ export function addInstance(
     allocationId: allocationId,
     instanceSlot: null, 
     storageSlot:  storageSlot,
+    storageArray: new Float32Array(allocator.storageData, storagePointer, INSTANCE_RECORD_SIZE/4),
+    storageView:  new DataView(allocator.storageData, storagePointer, INSTANCE_RECORD_SIZE),
   }
   allocator.instances[instanceId] = instance
 
@@ -203,6 +206,14 @@ export function deactivateInstance(
   allocation.numActive--
 }
 
+/** Get an instance by ID. */
+export function getInstance(instanceId: number, allocator: InstanceAllocator): InstanceRecord {
+  if(!(instanceId in allocator.instances)) {
+    throw new RatiteError('NotFound', `Invalid instance ID: ${instanceId}`)
+  }
+  return allocator.instances[instanceId]
+}
+
 /** Update an instance. */
 export function updateInstanceData(
     instanceId:   number, 
@@ -217,7 +228,16 @@ export function updateInstanceData(
   const storagePointer = instance.storageSlot * INSTANCE_RECORD_SIZE
   if(data)
     serialiseInstanceData(data, allocator.storageData, storagePointer)
+}
 
+/** Set the transform matrix of an instance. */
+export function setInstanceTransform(
+    transform:  Mat4,
+    instanceId: number,
+    allocator:  InstanceAllocator): void {
+  const instance = getInstance(instanceId, allocator)
+  const storagePointer = instance.storageSlot * INSTANCE_RECORD_SIZE
+  instance.storageArray.set(transform)
 }
 
 /** Sync the instance and storage buffers with the GPU. */

@@ -15,8 +15,10 @@ import {Antenna, setAntennaAltitude, setAntennaAzimuth} from './antenna.js'
 import Bundle from '../assets/bundle.json'
 import { createTelescope, defaultTelescopeDescriptor } from './telescope.js'
 import type { ErrorMessage, InfoMessage, InitMessage, Message, ReadyMessage, ResponseMessage } from './types.js'
-import { addWorkerEventListener, createWorkerController, debugWorker, getDepthImage, getStateFromWorker, initWorker, sendInputToWorker, startWorker, stopWorker } from './controller.js'
+import { addWorkerEventListener, createWorkerController, debugWorker, getDepthImage, getStateFromWorker, initWorker, sendInputToWorker, sendWorkerRequest, startWorker, stopWorker } from './controller.js'
 import { RatiteError, explainError, formatErrorType } from './ratite/error.js'
+import { createDebugInspector, toggleInspector } from './ratite/debug/ui.js'
+import type { InspectorAgent } from './ratite/debug/common'
 const { sin, cos, log, sqrt, min, max, random, PI } = Math
 glMatrix.setMatrixArrayType(Array)
 
@@ -46,6 +48,7 @@ async function main(): Promise<void> {
     errorModalMessage: document.querySelector('#error-modal-message') as HTMLDivElement,
     errorModalDetails: document.querySelector('#error-modal-details-text') as HTMLDivElement,
   }
+  
   //const gpu = await GPU.initGPU(elems.canvas)
   //const renderer = await Render.createRenderer(
   //  gpu.presentationFormat, 
@@ -68,7 +71,7 @@ async function main(): Promise<void> {
   //const mainCamera = sceneGraph.views.default.camera
   //const telescopeNode = getNodeByName('telescope', sceneGraph)
   //const telescope = createTelescope(telescopeNode, defaultTelescopeDescriptor, sceneGraph)
-
+  let debugInspector = null
   const worker = app.worker = createWorkerController()
   addWorkerEventListener('info', (ev: InfoMessage) => {
     elems.fpsAvg.data = ev.frameStats.average.toFixed(1)
@@ -77,6 +80,7 @@ async function main(): Promise<void> {
   }, worker)
   addWorkerEventListener('ready', (ev: ReadyMessage) => {
     console.log('worker ready')
+    debugInspector = createDebugInspector(debugAgent)
     startWorker(worker)
   }, worker)
   addWorkerEventListener('error', (ev: ErrorMessage) => {
@@ -93,6 +97,13 @@ async function main(): Promise<void> {
     canvas:              offscreen,
   }
   initWorker(initMessage, worker)
+
+  const debugAgent: InspectorAgent = {
+    send: async (message: Message) => {
+      return sendWorkerRequest(message, worker)
+    }
+  }
+  
   //const antennaNode = getNodeByName('antenna', sceneGraph)
   //const antennaObject: AntennaObject = {
   //  mount: antennaNode.children[0] as ModelNode,
@@ -135,7 +146,6 @@ async function main(): Promise<void> {
       case 'Period':
         if(!inputState.mouseCaptured)
           elems.canvas.requestPointerLock()
-        
         break
       case 'Escape':
         if(inputState.mouseCaptured) 
@@ -153,7 +163,9 @@ async function main(): Promise<void> {
       case 'Delete':
         debugWorker(worker)
         break
-
+      case 'Backquote':
+        toggleInspector(debugInspector)
+        break
       default:
         //console.log(ev.code)
         break

@@ -18,7 +18,7 @@
  * functionality or associations are provided here. 
  */
 
-import type  {LightingState, LightSource, LightSourceDescriptor, Vec4} from './types'
+import type  {LightingState, LightSource, LightSourceDescriptor, Mat4, Vec4} from './types'
 import {LIGHT_BUFFER_OFFSET_COUNT, LIGHT_BUFFER_OFFSET_RECORDS, 
   LIGHT_RECORD_OFFSET_POSITION, LIGHT_RECORD_SIZE, LIGHT_SOURCE_TYPE, 
   LIGHT_RECORD_OFFSET_TYPE,
@@ -28,7 +28,12 @@ import {LIGHT_BUFFER_OFFSET_COUNT, LIGHT_BUFFER_OFFSET_RECORDS,
   LIGHT_RECORD_OFFSET_DIFFUSE,
   LIGHT_RECORD_OFFSET_SPECULAR,
   LIGHT_RECORD_OFFSET_CONE} from './constants.js'
+import { RatiteError } from './error.js'
+import { vec4 } from 'gl-matrix'
 
+
+// Initial pointing direction for directional lights
+const initialDirectionVector: Vec4 = [0, 0, -1, 0]
 
 /** Initialise the lighting state. */
 export function createLightingState(bufferCapacity: number, device: GPUDevice): LightingState {
@@ -95,7 +100,27 @@ export function applyLightSourceDescriptor(descriptor: LightSourceDescriptor, so
       source.cone = descriptor.cone ?? source.cone
       break
   }
-}  
+}
+
+/** Set the direction of a light source with a transform matrix.
+ * 
+ * To reposition lights with a positional component, the translation component
+ * of the matrix is copied to the light source's position.
+ * 
+ * To reorient lights with a directional component, the matrix is multiplied
+ * by a unit vector pointing down the negative Z axis.
+ */
+export function applyLightSourceTransformMatrix(matrix: Mat4, id: number, state: LightingState): void {
+  const lightSource = getLightSource(id, state)
+  if(lightSource.type === 'directional' || lightSource.type === 'spot')
+    vec4.transformMat4(lightSource.direction, initialDirectionVector, matrix)
+  if(lightSource.type === 'point' || lightSource.type === 'spot') {
+    lightSource.position[0] = matrix[12]
+    lightSource.position[1] = matrix[13]
+    lightSource.position[2] = matrix[14]
+  }
+}
+
 
 /** Activate a light source. */
 export function activateLightSource(id: number, state: LightingState): void {
@@ -141,7 +166,7 @@ export function deactivateLightSource(id: number, state: LightingState): void {
 export function getLightSource(id: number, state: LightingState): LightSource {
   const lightSource = state.lightSources[id]
   if(!lightSource)
-    throw new Error(`Invalid light source ID: ${id}`)
+    throw new RatiteError('NotFound', `Invalid light source ID: ${id}`)
   return lightSource
 }
 

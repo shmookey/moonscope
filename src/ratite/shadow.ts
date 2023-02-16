@@ -187,3 +187,11 @@ export function calculateLightProjection(light: LightSource, out: Mat4): Mat4 {
   }
   return out
 }
+
+/** Get a shadow map by its ID. */
+export function getShadowMap(id: number, shadowMapper: ShadowMapperState): ShadowMap {
+  const shadowMap = shadowMapper.slots.find(s => s?.id === id)
+  if(!shadowMap)
+    throw new RatiteError('NotFound', 'No shadow map with that ID.')
+  return shadowMap
+}

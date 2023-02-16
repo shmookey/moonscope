@@ -1,7 +1,7 @@
 /** Parser/importer for the OBJ format for 3D meshes. */
 
 import type { XMesh, MeshVertex, Vec4 } from '../types'
-import { getBoundingVolume } from './mesh'
+import { getBoundingVolume } from './mesh.js'
 
 /** State data for OBJ file parser. */
 type ObjParseState = {
@@ -131,7 +131,6 @@ export function objGroupToXMesh(group: ObjGroup, state: ObjParseState): XMesh {
   }
 
   const bounds = getBoundingVolume(vertices)
-
   return {
     id:             0,
     name:           group.name,

@@ -2,7 +2,7 @@ import type {
   ResourceBundleDescriptor, TextureResourceDescriptor, MeshResourceDescriptor,
   Atlas, ResourceBundle, TextureResource, MeshResource, MeshStore,
   TextureRemapping, ShaderStore, ShaderResourceDescriptor, PipelineDescriptor,
-  MeshVertex, Renderer, PipelineLayoutState, MetaMaterial
+  MeshVertex, Renderer, PipelineLayoutState, MetaMaterial, Vec3
 } from "./types"
 import { addSubTexture, copyImageBitmapToSubTexture2, copyImageToSubTexture } from "./atlas.js"
 import {addMesh, getMeshById, serialiseVertices} from "./mesh.js"
@@ -137,8 +137,11 @@ export async function loadMeshResource(
   
   if(descriptor.texRemap)
     vertices = vertices.map(v => remapTextures(v, descriptor.texRemap))
-  if('prescale' in descriptor)
+  if('prescale' in descriptor) {
     vertices = vertices.map(v => prescaleVertex(v, descriptor.prescale))
+    boundingVolume.min = boundingVolume.min.map(v => v * descriptor.prescale) as Vec3
+    boundingVolume.max = boundingVolume.max.map(v => v * descriptor.prescale) as Vec3
+  }
   if('prescaleUV' in descriptor)
     vertices = vertices.map(v => prescaleVertexUV(v, descriptor.prescaleUV))
   const vertexData = serialiseVertices(vertices)

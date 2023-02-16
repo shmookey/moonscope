@@ -49,13 +49,13 @@ fn vertex_main(
 }
 
 // Colour at bluest point of sky
-const SKY_COLOUR = vec3<f32>(0x04, 0x15, 0xb4) / 255;
+const SKY_COLOUR = vec3<f32>(0x00, 0x00, 0x64) / 255;
 
 // Colour at midpoint of sky
 const MID_COLOUR = vec3<f32>(0x33, 0x99, 0xff) / 255;
 
 // Colour at whitest point of sky
-const SUN_COLOUR = vec3<f32>(0xa4, 0xc3, 0xff) / 255;
+const SUN_COLOUR = vec3<f32>(0x20, 0x20, 0x00) / 255;
 
 fn cube2sphere(pos: vec3<f32>) -> vec3<f32> {
   let x2 = pos.x*pos.x;
@@ -76,8 +76,8 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4<f32> {
   let horiz = length(pos.xz);
   let alt = acos(horiz) / 1.5707963267948966192313216916398;
   //let alt = acos(pos.y);
-  //let height = alt / 1.5707963267948966192313216916398;
-  let height = 1 - horiz;
+  let height = alt / 1.5707963267948966192313216916398;
+  //let height = 1 - horiz;
   let colour = mix(SUN_COLOUR, SKY_COLOUR, smoothstep(0.3, 0.8, height));
   return vec4(pow(colour, vec3(1/2.2)), 1.0);
 }

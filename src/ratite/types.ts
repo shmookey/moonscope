@@ -245,7 +245,8 @@ export type InstanceRecord = {
   allocationId:    number,        // ID of mesh allocation
   instanceSlot:    number | null, // Position in instance buffer, if active, otherwise null
   storageSlot:     number,        // Uniform index for shaders
-  //buffer:          ArrayBuffer,   // Local copy of instance data
+  storageArray:    Float32Array,  // Contents of storage buffer controlled by this instance as a Float32Array
+  storageView:     DataView,      // Contents of storage buffer controlled by this instance as a DataView
 }
 
 /** Instance data shared with shaders. */
@@ -382,10 +383,12 @@ export type SceneGraph = {
   nodes:              Node[],
   forwardDrawCalls:   DrawCallDescriptor[],
   depthPassDrawCalls: DrawCallDescriptor[],
+  nextNodeId:         number,
   models:             { [name: string]: Model },
   renderer:           Renderer,
   nextDrawCallId:     number,
   views:              { [name: string]: View }, // Named view objects, connect to cameras and lights
+  activeView:         View | null,              // View currently being rendered
   uniformBuffer:      GPUBuffer,
   uniformData:        ArrayBuffer,
   uniformFloats:      Float32Array,
@@ -393,6 +396,7 @@ export type SceneGraph = {
   lightingState:      LightingState,
   materialsBindGroup: GPUBindGroup,
   geometryBindGroup:  GPUBindGroup,
+  geometricNodes:     (ModelNode | CameraNode | LightSourceNode)[],
 }
 
 /** Scene node. */
@@ -403,6 +407,7 @@ export type Node = ModelNode
 
 /** Base node type. */
 export interface BaseNode {
+  id:              number,         // Node ID
   name?:           string,         // Human-readable name for convenient lookup
   nodeType:        NodeType,       // Node type
   transform:       Mat4,           // Local transform matrix
@@ -413,6 +418,7 @@ export interface BaseNode {
   dirty:           number,         // Dirty flags
   _boundingVolume: BoundingVolume, // Temporary storage of bounding volume
   _worldTransform: Mat4,           // Temporary storage of world transform
+  _modelView:      Mat4,           // Temporary storage of model-view matrix
 }
 
 /** Light source node.
@@ -456,11 +462,12 @@ export interface CameraNode extends BaseNode {
  * nodes.
  */
 export type View = {
-  name:       string,
-  projection: Mat4,
-  viewMatrix: Mat4,
-  node:       CameraNode | LightSourceNode | null,
-  shadowMap:  ShadowMap | null,
+  name:        string,
+  projection:  Mat4,
+  viewMatrix:  Mat4,
+  node:        CameraNode | LightSourceNode | null,
+  shadowMapId: number | null,
+  active:      boolean, // Is this the active view?
 }
 
 export type DirtyFlag = number
@@ -486,7 +493,8 @@ export type SceneGraphDescriptor = {
 export type ViewDescriptor = {
   name:       string,
   type:       ViewType,
-  projection: ProjectionDescriptor
+  projection: ProjectionDescriptor,
+  active?:    boolean,               // Is this the active view?
 }
 
 /** View type. */
