@@ -3,18 +3,6 @@ import type {BoundingVolume, Mat4, Vec2, Vec3, Vec4} from "./types"
 const { sin, cos, atan2, sqrt } = Math
 glMatrix.setMatrixArrayType(Array)
 
-export const DirtyFlags = {
-  WORLD_TRANSFORM:       0x01,
-  MODEL_VIEW_MATRIX:     0x02,
-  BOUNDING_VOLUME:       0x04,
-  ALL:                   0x07,
-}
-
-export const INITIAL_DIRTY_FLAGS = 
-  DirtyFlags.WORLD_TRANSFORM | 
-  DirtyFlags.MODEL_VIEW_MATRIX | 
-  DirtyFlags.BOUNDING_VOLUME
-
 export const identityMatrix = mat4.create() as Mat4
 
 export const nullBoundingVolume: BoundingVolume = {
@@ -107,6 +95,73 @@ export function transformedBoundingVolume(bv: BoundingVolume, transform: Mat4, o
 
   return out
 }
+
+const tmpVec4_frustumTest = [0,0,0,1] as Vec4
+
+/** Does the bounding volume intersect the view frustum?
+ * 
+ * The bounding volume is transformed to clip space by the view-projection
+ * matrix. For each vertex, we check if it is outside each of the 6 planes
+ * of the view frustum. If all vertices are outside at least one plane,
+ * the bounding volume is outside the view frustum.
+ */
+export function frustumTest(bv: BoundingVolume, viewProjection: Mat4): boolean {
+  let numOutsideLeft = 0
+  let numOutsideRight = 0
+  let numOutsideBottom = 0
+  let numOutsideTop = 0
+  let numOutsideNear = 0
+  let numOutsideFar = 0
+
+  const minX = bv.min[0]
+  const minY = bv.min[1]
+  const minZ = bv.min[2]
+  const maxX = bv.max[0]
+  const maxY = bv.max[1]
+  const maxZ = bv.max[2]
+
+  for(let i = 0; i < 8; i++) {
+    tmpVec4_frustumTest[0] = i & 1 ? maxX : minX
+    tmpVec4_frustumTest[1] = i & 2 ? maxY : minY
+    tmpVec4_frustumTest[2] = i & 4 ? maxZ : minZ
+    tmpVec4_frustumTest[3] = 1
+    vec4.transformMat4(tmpVec4_frustumTest, tmpVec4_frustumTest, viewProjection)
+
+    const x = tmpVec4_frustumTest[0]
+    const y = tmpVec4_frustumTest[1]
+    const z = tmpVec4_frustumTest[2]
+    const w = tmpVec4_frustumTest[3]
+
+    if(x < -w) numOutsideLeft++
+    else if(x >  w) numOutsideRight++
+    if(y < -w) numOutsideBottom++
+    else if(y >  w) numOutsideTop++
+    if(z > w) numOutsideNear++
+    else if(z <  0) numOutsideFar++
+  }
+
+  return numOutsideLeft < 8 && numOutsideRight < 8 && numOutsideBottom < 8 && numOutsideTop < 8 && numOutsideNear < 8 && numOutsideFar < 8
+}
+
+
+const tmpVec4_pointInFrustum = [0,0,0,1] as Vec4
+
+/** Test if a point is in the view frustum.
+ * 
+ * The point is transformed to clip space by a view-projection matrix.
+ */
+export function pointInFrustum(point: Vec4, viewProjection: Mat4): boolean {
+  vec4.transformMat4(tmpVec4_pointInFrustum, point, viewProjection)
+  const x = tmpVec4_pointInFrustum[0]
+  const y = tmpVec4_pointInFrustum[1]
+  const z = tmpVec4_pointInFrustum[2]
+  const w = tmpVec4_pointInFrustum[3]
+  return x >= -w && x <= w && y >= -w && y <= w && z >= -w && z <= w
+}
+
+
+
+
 
 export function latLonToUnitVec(c: Vec2): Vec3 {
   const [lat,lon] = c

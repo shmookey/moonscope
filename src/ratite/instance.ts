@@ -65,6 +65,7 @@ export function createInstanceAllocator(device: GPUDevice, capacity: number): In
     instanceBuffer:   instanceBuffer,
     storageData:      storageData,
     instanceData:     instanceData,
+    instanceArray:    new Uint32Array(instanceData),
     nextAllocationId: 0, 
     nextInstanceId:   0,
     nextStorageSlot:  0,
@@ -109,8 +110,7 @@ export function registerAllocation(capacity: number, allocator: InstanceAllocato
  */
 export function addInstance(
     allocationId: number, 
-    data:         InstanceData, 
-    device:       GPUDevice, 
+    data:         InstanceData,
     allocator:    InstanceAllocator,
     activate:     boolean = true): number {
 
@@ -147,7 +147,7 @@ export function addInstance(
   allocator.nextInstanceId++
 
   if(activate) {
-    activateInstance(instanceId, allocator, device)
+    activateInstance(instanceId, allocator)
   }
 
   return instanceId
@@ -158,10 +158,7 @@ export function addInstance(
  * Places an index into the storage buffer corresponding to the instance in the
  * instance buffer for rendering.
  */
-export function activateInstance(
-    instanceId: number,
-    allocator:  InstanceAllocator,
-    device:     GPUDevice): void {
+export function activateInstance(instanceId: number, allocator: InstanceAllocator): void {
   if(!(instanceId in allocator.instances)) {
     throw new Error('Invalid instance ID')
   }
@@ -181,10 +178,7 @@ export function activateInstance(
 }
 
 /** Deactivate an instance in the buffer. */
-export function deactivateInstance(
-    instanceId: number,
-    allocator:  InstanceAllocator,
-    device:     GPUDevice): void {
+export function deactivateInstance(instanceId: number, allocator: InstanceAllocator): void {
   if(!(instanceId in allocator.instances)) {
     throw new Error('Invalid instance ID')
   }
@@ -205,6 +199,21 @@ export function deactivateInstance(
   instance.instanceSlot = null
   allocation.numActive--
 }
+
+/** Deactivate all instances. */
+export function deactivateAllInstances(state: InstanceAllocator): void {
+  // Clear the instance buffer
+  state.instanceArray.fill(0)
+  // Reset the allocations
+  for(const allocation of state.allocations) {
+    allocation.numActive = 0
+  }
+  // Reset the instances
+  for(const instance of state.instances) {
+    instance.instanceSlot = null
+  }
+}
+    
 
 /** Get an instance by ID. */
 export function getInstance(instanceId: number, allocator: InstanceAllocator): InstanceRecord {

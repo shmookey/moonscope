@@ -7,10 +7,10 @@ import type {
 import * as Skybox from './skybox.js'
 import {createCamera, createFirstPersonCamera} from './camera.js'
 import {mat4, quat, glMatrix, vec4, vec3} from 'gl-matrix'
-import {activateInstance, addInstance, deactivateInstance, registerAllocation, setInstanceTransform, syncInstanceBuffers, updateInstanceData} from "./instance.js"
+import {activateInstance, addInstance, deactivateAllInstances, deactivateInstance, registerAllocation, setInstanceTransform, syncInstanceBuffers, updateInstanceData} from "./instance.js"
 import {getMeshById, getMeshByName} from "./mesh.js"
-import {UNIFORM_BUFFER_OFFSET_PROJECTION, UNIFORM_BUFFER_OFFSET_VIEW} from "./constants.js"
-import {DirtyFlags, INITIAL_DIRTY_FLAGS, expandBoundingVolume, identityMatrix, latLonToUnitVec, resetBoundingVolume, transformedBoundingVolume} from "./common.js"
+import {DirtyFlags, INITIAL_DIRTY_FLAGS, UNIFORM_BUFFER_OFFSET_PROJECTION, UNIFORM_BUFFER_OFFSET_VIEW} from "./constants.js"
+import {expandBoundingVolume, frustumTest, identityMatrix, latLonToUnitVec, resetBoundingVolume, transformedBoundingVolume} from "./common.js"
 import {createGeometryBindGroup, createMaterialsBindGroup, createMainUniformBuffer} from "./pipeline.js"
 import {activateLightSource, applyLightSourceDescriptor, applyLightSourceTransformMatrix, createLightingState, createLightSource, deactivateLightSource, updateLightingBuffer} from "./lighting.js"
 import { useMaterialByName } from "./material.js"
@@ -70,10 +70,11 @@ export function createSceneGraph(
     parent:          null,
     root:            null,
     children:        [],
-    visible:         true,
+    hidden:          false,
     dirty:           INITIAL_DIRTY_FLAGS,
     _worldTransform: mat4.create() as Mat4,
     _modelView:      mat4.create() as Mat4,
+    _inFrustum:      true,
     _boundingVolume: {
       min: vec3.create() as Vec3,
       max: vec3.create() as Vec3,
@@ -81,6 +82,7 @@ export function createSceneGraph(
   }
   rootNode.root = rootNode
   return {
+    label:              label,
     renderer:           renderer,
     nextNodeId:         nextNodeID,
     root:               rootNode,
@@ -99,6 +101,7 @@ export function createSceneGraph(
     materialsBindGroup: materialsBindGroup,
     activeView:         null,
     geometricNodes:     [],
+    frustumNodes:       new Array(1000),
   }
 }
 
@@ -167,88 +170,39 @@ export function createNodeFromDescriptor(
       attachNode(child, node, sceneGraph)
     }
   }
-  if('visible' in descriptor)
-    setNodeVisibility(descriptor.visible, node, sceneGraph)
+  if('hidden' in descriptor)
+    setNodeHidden(descriptor.hidden, node, sceneGraph)
   return node
 }
 
-/** Set the visibility of a node.
+/** Hide or un-hide a node.
  * 
- * All models in the node's subtree are affected, but the `visible` property of
- * descendant nodes is not changed. Rather, they are added and removed from the
- * scene graph's draw call list as needed. Light sources (not implemented yet)
- * will be updated by writing to the global uniform buffer.
+ * A hidden node and its children are not drawn and their state is not updated
+ * during the scene graph update. Hidden light sources are disabled and do not
+ * participate in lighting calculations.
  */
-export function setNodeVisibility(visible: boolean, node: Node, sceneGraph: SceneGraph): void {
-  // TODO: don't needlessly show and then hide newly created invisible nodes
-
-  if(node.visible === visible) return
-  node.visible = false
-  if(!node.root) return
-
-  if(visible) {
-    activateNode(node, sceneGraph)
-  } else {
-    activateNode(node, sceneGraph)
-  }
+export function setNodeHidden(isHidden: boolean, node: Node, sceneGraph: SceneGraph): void {
+  if(node.hidden === isHidden) return
+  node.hidden = isHidden
+  if(node.root)
+    _updateLightActivation(!isHidden, node, sceneGraph)
 }
 
-/** Deactivate a node and all its visible descendants for drawing.
- *  
- * This is used by `attachNode`, `detachNode` and `setNodeVisibility` to update
- * draw calls and the lighting buffer when the effective visibility of a node
- * changes. It should not be used elsewhere, as this will lead to inconsistent
- * state the next time that one of these functions is called.
+/** Internal recursive helper function for `setNodeHidden` and others.
+ * 
+ * This function just activates and deactivates light sources. Model visibility
+ * is determined separately in the scene graph update.
  */
-function deactivateNode(node: Node, sceneGraph: SceneGraph): void {
-  if(!node.visible) return
-
-  switch(node.nodeType) {
-  case 'model':
-    const { instanceAllocator, device } = sceneGraph.renderer
-    const drawCall = sceneGraph.forwardDrawCalls[node.drawCallId]
-    deactivateInstance(node.instanceId, instanceAllocator, device)
-    drawCall.instanceCount--
-    break
-  case 'light':
-    deactivateLightSource(node.lightSource.id, sceneGraph.lightingState)
-    break
-  default:
-    break
+function _updateLightActivation(activate: boolean, node: Node, scene: SceneGraph): void {
+  if(node.nodeType === 'light') {
+    if(activate)
+      activateLightSource(node.lightSource.id, scene.lightingState)
+    else
+      deactivateLightSource(node.lightSource.id, scene.lightingState)
   }
-  
   for(let child of node.children)
-    deactivateNode(child, sceneGraph)
+    _updateLightActivation(activate, child, scene)
 }
-
-/** Activate a node and all its visible descendants for drawing.
- *  
- * This is used by `attachNode`, `detachNode` and `setNodeVisibility` to update
- * draw calls and the lighting buffer when the effective visibility of a node
- * changes. It should not be used elsewhere, as this will lead to inconsistent
- * state the next time that one of these functions is called.
- */
-function activateNode(node: Node, sceneGraph: SceneGraph): void {
-  if(!node.visible) return
-
-  switch(node.nodeType) {
-  case 'model':
-    const { instanceAllocator, device } = sceneGraph.renderer
-    const drawCall = sceneGraph.forwardDrawCalls[node.drawCallId]
-    activateInstance(node.instanceId, instanceAllocator, device)
-    drawCall.instanceCount++
-    break
-  case 'light': 
-    activateLightSource(node.lightSource.id, sceneGraph.lightingState)
-    break
-  default:
-    break
-  }
-  
-  for(let child of node.children)
-    activateNode(child, sceneGraph)
-}
-
 
 /** Set the transform of a node, overwriting any previous transform. */
 export function setTransform(transform: TransformDescriptor, node: Node): void {
@@ -408,7 +362,7 @@ export function createModelNode(
     throw new Error(`Model ${modelName} does not exist.`)
   }
 
-  const { device, instanceAllocator, meshStore, materials } = sceneGraph.renderer
+  const { instanceAllocator, meshStore, materials } = sceneGraph.renderer
   const model = sceneGraph.models[modelName]
   const mesh = getMeshById(model.meshId, meshStore)
   if(!materialName) 
@@ -421,7 +375,6 @@ export function createModelNode(
   const instanceId = addInstance(
     model.allocationId,  
     instanceData,
-    device, 
     instanceAllocator,
     false,
   )
@@ -436,12 +389,13 @@ export function createModelNode(
     instanceId:      instanceId,
     modelName:       modelName,
     drawCallId:      model.drawCallId,
-    visible:         true,
+    hidden:          false,
     material:        materialName,
     _instanceData:   instanceData,
     dirty:           INITIAL_DIRTY_FLAGS,
     _worldTransform: mat4.create() as Mat4,
     _modelView:      mat4.create() as Mat4,
+    _inFrustum:      true,
     _boundingVolume: {
       min: vec3.create() as Vec3,
       max: vec3.create() as Vec3,
@@ -472,10 +426,11 @@ export function createCameraNode(viewName: string | null, sceneGraph: SceneGraph
     transform:       mat4.create() as Mat4,
     children:        [],
     view:            view,
-    visible:         true,
+    hidden:          false,
     dirty:           INITIAL_DIRTY_FLAGS,
     _worldTransform: mat4.create() as Mat4,
     _modelView:      mat4.create() as Mat4,
+    _inFrustum:      true,
     _boundingVolume: {
       min: vec3.create() as Vec3,
       max: vec3.create() as Vec3,
@@ -517,12 +472,13 @@ export function createLightSourceNode(
     transform:       mat4.create() as Mat4,
     children:        [],
     lightSource:     lightSource,
-    visible:         true,
+    hidden:          false,
     castShadows:     descriptor.castShadows || false,
     view:            view,
     dirty:           INITIAL_DIRTY_FLAGS,
     _worldTransform: mat4.create() as Mat4,
     _modelView:      mat4.create() as Mat4,
+    _inFrustum:      true,
     _boundingVolume: {
       min: vec3.create() as Vec3,
       max: vec3.create() as Vec3,
@@ -550,10 +506,11 @@ export function createTransformNode(sceneGraph: SceneGraph): Node {
     root:            null,
     transform:       mat4.create() as Mat4,
     children:        [],
-    visible:         true,
+    hidden:          false,
     dirty:           INITIAL_DIRTY_FLAGS,
     _worldTransform: mat4.create() as Mat4,
     _modelView:      mat4.create() as Mat4,
+    _inFrustum:      true,
     _boundingVolume: {
       min: vec3.create() as Vec3,
       max: vec3.create() as Vec3,
@@ -625,11 +582,11 @@ export function registerSceneGraphModel(
  * 4. If the parent's root property is null, return.
  * 5. Recursively update the root for the node subtree.
  * 6. If any ancestor node is hidden, return.
- * 7. Recursively activate the node subtree for drawing. 
+ * 7. Recursively activate the node subtree for drawing. TODO: this is not right. we only deal with lights here
  */
 export function attachNode(
-  node: Node,
-  parent: Node,
+  node:       Node,
+  parent:     Node,
   sceneGraph: SceneGraph): void {
 
   if(node.root)
@@ -648,7 +605,7 @@ export function attachNode(
   if(!isNodeVisible(node))
     return
 
-  activateNode(node, sceneGraph)
+  _updateLightActivation(true, node, sceneGraph)
 }
 
 /** Detach a node from its parent.
@@ -675,7 +632,7 @@ export function detachNode(node: Node, sceneGraph: SceneGraph): void {
     return
   
   if(isNodeVisible(node))
-    deactivateNode(node, sceneGraph)
+    _updateLightActivation(false, node, sceneGraph)
 
   walkSubtree(n => n.root = null, node)
 }
@@ -690,13 +647,13 @@ function walkSubtree(fn: (node: Node) => void, node: Node): void {
 
 /** Is the node visible? 
  * 
- * A node is visible if it is attached to the scene, its `visible` property is
- * true, and all of its ancestors are visible.
+ * A node is visible if it is attached to the scene, its `hidden` property is
+ * false, and all of its ancestors are visible.
  */
 export function isNodeVisible(node: Node): boolean {
   if(!node.root) return false
   for(let ancestor = node; ancestor; ancestor = ancestor.parent)
-    if(!ancestor.visible) return false
+    if(ancestor.hidden) return false
   return true
 }
 
@@ -729,6 +686,8 @@ export function prepareForwardRender(scene: SceneGraph): void {
   updateWorldTransforms(scene.root)
   updateBoundingVolumes(scene.root, scene)
   updateModelViews(scene.root, scene)
+  updateFrustumTests(scene.root, scene)
+  updateDrawCalls(scene)
   
   scene.uniformFloats.set(view.viewMatrix, UNIFORM_BUFFER_OFFSET_VIEW / 4)
   scene.uniformFloats.set(view.projection, UNIFORM_BUFFER_OFFSET_PROJECTION / 4)
@@ -871,9 +830,11 @@ export function clearDirty(flag: DirtyFlag, node: Node): void {
  * following rules:
  * 
  *   1. If the world transform is dirty, the model-view matrix is dirty.
+ *   2. If the model-view matrix is dirty, the frustum test result is dirty.
  */
 export function setDirty(flag: DirtyFlag, node: Node, propagate: boolean = true): void {
   node.dirty |= flag | (flag & DirtyFlags.WORLD_TRANSFORM) << 1
+  //node.dirty |= flag | (flag & DirtyFlags.MODEL_VIEW_MATRIX) << 2 // TODO: this is not correct
   if(propagate)
     for(const child of node.children)
       setDirty(flag, child)
@@ -902,13 +863,24 @@ export function getRoot(node: Node): Node {
     return getRoot(node.parent)
 }
 
-/** Get the bounding box of a node. */
-//export function getBoundingVolume(node: Node): BoundingVolume {
-//  if(!isDirty(DirtyFlags.BOUNDING_VOLUME, node))
-//    return node._boundingVolume
-//  
-//  const root = getRoot(node)
-//}
+/** Get the mesh of a model node. */
+export function getMesh(node: ModelNode, scene: SceneGraph): MeshResource {
+  const model = getModel(node, scene)
+  const mesh = getMeshById(model.meshId, scene.renderer.meshStore)
+  if(!mesh)
+    throw new RatiteError('NotFound', `Mesh ${model.meshId} not found`)
+  return mesh
+}
+
+/** Get the model of a model node. */
+export function getModel(node: ModelNode, scene: SceneGraph): Model {
+  const model = scene.models[node.modelName]
+  if(!model)
+    throw new RatiteError('NotFound', `Model ${node.modelName} not found`)
+  return model
+}
+
+
 
 
 /** Update dirty world transform matrices.
@@ -928,7 +900,7 @@ export function updateWorldTransforms(node: Node): void {
 
 /** Internal helper function for updateWorldTransforms. */
 function _updateWorldTransforms(node: Node, current: Mat4): void {
-  if(!isDirty(DirtyFlags.WORLD_TRANSFORM, node) || !node.visible)
+  if(!isDirty(DirtyFlags.WORLD_TRANSFORM, node) || node.hidden)
     return
   mat4.multiply(node._worldTransform, current, node.transform)
   for(const child of node.children)
@@ -962,7 +934,7 @@ export function updateBoundingVolumes(node: Node, scene: SceneGraph): void {
 
 /** Internal helper function for updateBoundingVolumes. */
 function _updateBoundingVolumes(node: Node, scene: SceneGraph): void {
-  if(!isDirty(DirtyFlags.BOUNDING_VOLUME, node) || !node.visible)
+  if(!isDirty(DirtyFlags.BOUNDING_VOLUME, node) || node.hidden)
     return
   
   if(node.nodeType === 'model') {
@@ -998,7 +970,7 @@ export function updateModelViews(root: Node, scene: SceneGraph): void {
 
 /** Internal helper function for setModelViewMatrices. */
 function _updateModelViews(viewMatrix: Mat4, node: Node, scene: SceneGraph): void {
-  if(!isDirty(DirtyFlags.MODEL_VIEW_MATRIX, node) || !node.visible)
+  if(!isDirty(DirtyFlags.MODEL_VIEW_MATRIX, node) || node.hidden)
     return
   mat4.mul(node._modelView, viewMatrix, node._worldTransform)
 
@@ -1017,21 +989,77 @@ function _updateModelViews(viewMatrix: Mat4, node: Node, scene: SceneGraph): voi
   clearDirty(DirtyFlags.MODEL_VIEW_MATRIX, node)
 }
 
+const tmpMat4_updateFrustumTests = mat4.create() as Mat4
 
-/** Get the mesh of a model node. */
-export function getMesh(node: ModelNode, scene: SceneGraph): MeshResource {
-  const model = getModel(node, scene)
-  const mesh = getMeshById(model.meshId, scene.renderer.meshStore)
-  if(!mesh)
-    throw new RatiteError('NotFound', `Mesh ${model.meshId} not found`)
-  return mesh
+/** Update frustum test results.
+ * 
+ * Frustum testing checks if the bounding box of a node intersects the view
+ * frustum. If a node is outside the frustum, it and all its children will be
+ * marked for culling. The frustum test is skipped for hidden nodes and nodes
+ * not marked as dirty.
+ * 
+ * The scene's frustumModelNodes list is cleared and then populated with all of
+ * the model nodes that are inside the frustum.
+ */
+export function updateFrustumTests(root: Node, scene: SceneGraph): void {
+  if(!scene.activeView)
+    throw new RatiteError('InvalidOperation', 'No active view')
+  if(!isDirty(DirtyFlags.FRUSTUM_TEST, root))
+    return
+  if(isDirty(DirtyFlags.BOUNDING_VOLUME, root)) {
+    console.warn('Early bounding volume update triggered by updateFrustumTests()')
+    updateWorldTransforms(root)
+    updateBoundingVolumes(root, scene)
+  }
+  // Calculate the view-projection matrix
+  mat4.mul(tmpMat4_updateFrustumTests, scene.activeView.projection, scene.activeView.viewMatrix)
+  // Clear the frustum nodes list
+  scene.frustumNodes.length = 0
+  _updateFrustumTests(tmpMat4_updateFrustumTests, root, scene)
 }
 
-/** Get the model of a model node. */
-export function getModel(node: ModelNode, scene: SceneGraph): Model {
-  const model = scene.models[node.modelName]
-  if(!model)
-    throw new RatiteError('NotFound', `Model ${node.modelName} not found`)
-  return model
+/** Internal helper function for updateFrustumTests. */
+function _updateFrustumTests(viewProjection: Mat4, node: Node, scene: SceneGraph): void {
+  if(!isDirty(DirtyFlags.FRUSTUM_TEST, node) || node.hidden)
+    return
+  node._inFrustum = frustumTest(node._boundingVolume, viewProjection)
+  if(!node._inFrustum) {
+    frustumCull(node)
+    return
+  }
+  if(node.nodeType === 'model' || node.nodeType === 'light')
+    scene.frustumNodes.push(node)
+  for(const child of node.children)
+    _updateFrustumTests(viewProjection, child, scene)
+  clearDirty(DirtyFlags.FRUSTUM_TEST, node)
+}
+  
+/** Mark a node and all its children as outside the frustum. */
+function frustumCull(node: Node): void {
+  node._inFrustum = false
+  for(const child of node.children)
+    frustumCull(child)
+  clearDirty(DirtyFlags.FRUSTUM_TEST, node)
+}
+
+/** Update draw calls for instances currently in the view frustum. */
+export function updateDrawCalls(scene: SceneGraph): void {
+  // Clear the active instances and lights
+  deactivateAllInstances(scene.renderer.instanceAllocator)
+  // Clear the draw call instance counts
+  for(const drawCall of scene.forwardDrawCalls)
+    drawCall.instanceCount = 0
+  // Activate the instances for the models in the frustum
+  for(const node of scene.frustumNodes) {
+    switch(node.nodeType) {
+    case 'model':
+      activateInstance(node.instanceId, scene.renderer.instanceAllocator)
+      scene.forwardDrawCalls[node.drawCallId].instanceCount++
+      break
+    case 'light':
+      // TODO: maybe something here later
+      break
+    }
+  }
 }
 

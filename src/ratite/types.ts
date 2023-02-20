@@ -217,6 +217,7 @@ export type InstanceAllocator = {
   instanceBuffer:      GPUBuffer,            // Instance buffer object
   storageData:         ArrayBuffer,          // Storage buffer data
   instanceData:        ArrayBuffer,          // Instance buffer data
+  instanceArray:       Uint32Array,          // Instance buffer data as uint32 array (mostly used for one-shot clearing)
   nextAllocationId:    number,               // Next allocation ID to be assigned
   nextInstanceId:      number,               // Next instance ID to be assigned
   nextStorageSlot:     number,               // Position in storage buffer for next instance, after vacated slots
@@ -235,8 +236,8 @@ export type InstanceAllocation = {
   capacity:      number,        // Number of instance slots
   numInstances:  number,        // Current instance count
   numActive:     number,        // Number of instances that have been assigned instance buffer slots
-  slotData:      Uint32Array,   // Contents of instance buffer controlled by this allocation
-  slotInstances: Uint32Array,   // Instance IDs of instances in this allocation currently active at each slot
+  slotData:      Uint32Array,   // This allocation's region of the instance buffer, containing storage array indices
+  slotInstances: Uint32Array,   // Instance IDs corresponding to each slot in the instance buffer
 }
 
 /** An instance in an instance allocation. */
@@ -397,6 +398,7 @@ export type SceneGraph = {
   materialsBindGroup: GPUBindGroup,
   geometryBindGroup:  GPUBindGroup,
   geometricNodes:     (ModelNode | CameraNode | LightSourceNode)[],
+  frustumNodes:       Node[],
 }
 
 /** Scene node. */
@@ -414,11 +416,12 @@ export interface BaseNode {
   parent:          Node | null,    // Parent node, if part of a tree
   root:            Node | null,    // Root node, if attached to scene
   children:        Node[],         // Child nodes
-  visible:         boolean,        // Visibility toggle
+  hidden:          boolean,        // Visibility toggle
   dirty:           number,         // Dirty flags
   _boundingVolume: BoundingVolume, // Temporary storage of bounding volume
   _worldTransform: Mat4,           // Temporary storage of world transform
   _modelView:      Mat4,           // Temporary storage of model-view matrix
+  _inFrustum:      boolean,        // Temporary storage of frustum culling result
 }
 
 /** Light source node.
@@ -476,6 +479,20 @@ export type DirtyFlag = number
 export type BoundingVolume = {
   min: Vec3,
   max: Vec3,
+}
+
+/** Frustum information. */
+export type Frustum = {
+  wNear:    number,
+  hNear:    number,
+  wFar:     number,
+  hFar:     number,
+  pos:      Vec3,
+  dir:      Vec3,
+  nearDist: number,
+  farDist:  number,
+  up:       Vec3,
+  right:    Vec3,
 }
 
 //
@@ -544,7 +561,7 @@ export interface BaseNodeDescriptor {
   type:       NodeType,
   transform?: TransformDescriptor,
   children?:  NodeDescriptor[],
-  visible?:   boolean,
+  hidden?:    boolean,
 }
 
 /** Light source node descriptor.
@@ -648,10 +665,8 @@ export type Renderer = {
   atlas:               Atlas,
   instanceAllocator:   InstanceAllocator,
   meshStore:           MeshStore,
-  drawCalls:           DrawCallDescriptor[],
   models:              Model[],
   nextModelId:         number,
-  nextDrawCallId:      number,
   device:              GPUDevice,
   depthTexture:        GPUTexture,
   depthTextureView:    GPUTextureView,

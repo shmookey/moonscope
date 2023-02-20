@@ -3,7 +3,7 @@ import type { Mat4, ErrorType, MatrixDescriptor, Quat, CameraNode, GPUContext, R
 import { initGPU } from './ratite/gpu.js'
 import { createRenderer, renderFrame } from './ratite/render.js'
 import { loadResourceBundle } from './ratite/resource.js'
-import { createScene, getNodeByName, setTransform } from './ratite/scene.js'
+import { createScene, getNodeByName, setDirty, setTransform } from './ratite/scene.js'
 import { createTelescope, defaultTelescopeDescriptor } from './telescope.js'
 import { applyFirstPersonCamera, moveFirstPersonCameraForward, moveFirstPersonCameraRight, moveFirstPersonCameraUpScale, rotateFirstPersonCamera } from './ratite/camera.js'
 import {vec3, mat4, quat, glMatrix} from 'gl-matrix'
@@ -12,6 +12,7 @@ import { createDepthMapExporter, exportDepthMapLayer } from './ratite/debug/dept
 import {celestialBodyModelMatrix, generateUniverse, Universe} from './universe.js'
 import * as GPU from './ratite/gpu.js'
 import * as Sky from './sky.js'
+import { DirtyFlags } from './ratite/constants.js'
 const {sin, cos, random, sqrt, min, max, PI} = Math
 glMatrix.setMatrixArrayType(Array)
 
@@ -346,6 +347,7 @@ function aTerribleWayOfUpdatingTheCamera_ReallyBad() {
   mat4.multiply(tempMat4_1, tempMat4_2, tempMat4_1)
   tempMatrixTransform.matrix = tempMat4_1
   setTransform(tempMatrixTransform, state.mainCamera)
+  setDirty(DirtyFlags.MODEL_VIEW_MATRIX | DirtyFlags.FRUSTUM_TEST, state.mainCamera.root)
 }
 
 

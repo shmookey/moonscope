@@ -9,11 +9,13 @@ glMatrix.setMatrixArrayType(Array)
 
 /** Scene inspector state. */
 export interface SceneInspectorState {
-  selectedNode: Node | null,
-  elements:     SceneInspectorElements,
-  active:       boolean,
-  agent:        InspectorAgent,
-  propsActive:  boolean, // Is the properties panel active?
+  selectedNode:   Node | null,
+  selectedNodeId: number | null,
+  elements:       SceneInspectorElements,
+  active:         boolean,
+  agent:          InspectorAgent,
+  propsActive:    boolean, // Is the properties panel active?
+  nodes:          Node[], // All nodes indexed by id
 }
 
 /** Scene inspector elements. */
@@ -39,16 +41,18 @@ export function createSceneInspector(parentElement: HTMLElement, agent: Inspecto
   const container = createElement('div', 'ri-scene-inspector')
   container.innerHTML = sceneInspectorHTML
   const state: SceneInspectorState = {
-    selectedNode: null,
-    active:       false,
-    propsActive:  false,
-    agent:        agent,
+    selectedNode:   null,
+    selectedNodeId: null,
+    active:         false,
+    propsActive:    false,
+    agent:          agent,
+    nodes:          [],
     elements: {
-      parent:     parentElement,
-      container:  container,
-      tree:       container.querySelector('.ri-scene-inspector-tree') as HTMLElement,
-      properties: container.querySelector('.ri-scene-inspector-properties') as HTMLElement,
-      propTable:  container.querySelector('.ri-scene-inspector-properties-table') as HTMLElement,
+      parent:       parentElement,
+      container:    container,
+      tree:         container.querySelector('.ri-scene-inspector-tree')             as HTMLElement,
+      properties:   container.querySelector('.ri-scene-inspector-properties')       as HTMLElement,
+      propTable:    container.querySelector('.ri-scene-inspector-properties-table') as HTMLElement,
     },
   }
   state.elements.properties.remove()
@@ -61,8 +65,8 @@ export function inspectNode(node: Node, state: SceneInspectorState): void {
     state.elements.container.append(state.elements.properties)
     state.propsActive = true
   }
-  if(state.selectedNode === node) return
   state.selectedNode = node
+  state.selectedNodeId = node.id
   const table = state.elements.propTable
   table.innerHTML = '' // Clear the table
   const name = createNodePropRow('name', node.name ?? '(unnamed)')
@@ -85,6 +89,7 @@ export function inspectNode(node: Node, state: SceneInspectorState): void {
     table.append(cameraView)
     break
   }
+  const inFrustum = createNodePropRow('in-frustum', node._inFrustum ? 'yes' : 'no')
   const originPosition = vec4.transformMat4(vec4.create(), [0, 0, 0, 1], node._worldTransform).slice(0,3) as Vec3
   const bv = node._boundingVolume
   const boundingSize = [bv.max[0] - bv.min[0], bv.max[1] - bv.min[1], bv.max[2] - bv.min[2]] as Vec3
@@ -96,7 +101,7 @@ export function inspectNode(node: Node, state: SceneInspectorState): void {
   const modelView = createNodePropMatrixRow('model-view', node._modelView)
   //const boundingVolume = createNodePropMatrixRow('bounding-volume', node._boundingVolume)
 
-  table.append(origin, centre, size, worldTransform, modelView)
+  table.append(origin, centre, size, inFrustum, worldTransform, modelView)
 }
 
 /** Create a node property table row. */
@@ -172,9 +177,16 @@ export function hideSceneInspector(state: SceneInspectorState): void {
 /** Update the scene graph viewer. */
 export async function updateSceneInspector(state: SceneInspectorState): Promise<void> {
   const node = await state.agent.send({ type: 'getState' }) as Node
+  state.nodes.length = 0
   const e = createNodeElement(node, state)
   state.elements.tree.innerHTML = ''
   state.elements.tree.append(e)
+  if(state.selectedNodeId !== null) {
+    const node = state.nodes[state.selectedNodeId]
+    state.selectedNode = node
+    if(node)
+      inspectNode(node, state)
+  }
 }
 
 /** Create a node element. */
@@ -186,7 +198,7 @@ export function createNodeElement(node: Node, state: SceneInspectorState): HTMLE
     createElement('div', 'ri-node-name', node.name) :
     createElement('div', 'ri-node-name-unnamed', `(${node.nodeType})`)
   name.classList.add('ri-node-prop')
-  if(!node.visible) {
+  if(node.hidden) {
     container.classList.add('ri-node-hidden')
     name.innerText += ' (hidden)'
   }
@@ -218,7 +230,7 @@ export function createNodeElement(node: Node, state: SceneInspectorState): HTMLE
     inspectNode(node, state)
     ev.stopPropagation()
    })
-
+   state.nodes[node.id] = node
   return container
 }
 

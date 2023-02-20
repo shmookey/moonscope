@@ -1,4 +1,19 @@
-// Values defined in `doc/Shader interface.txt`
+export const DirtyFlags = {
+  WORLD_TRANSFORM:       0x01,
+  MODEL_VIEW_MATRIX:     0x02,
+  BOUNDING_VOLUME:       0x04,
+  FRUSTUM_TEST:          0x08,
+  ALL:                   0x0F,
+}
+
+export const INITIAL_DIRTY_FLAGS = 
+  DirtyFlags.WORLD_TRANSFORM | 
+  DirtyFlags.MODEL_VIEW_MATRIX | 
+  DirtyFlags.BOUNDING_VOLUME |
+  DirtyFlags.FRUSTUM_TEST
+
+
+// The following shader interface constants are defined in `doc/Shader interface.txt`
 
 // Vertex attributes
 export const VERTEX_SIZE                      =  64  // Byte length of storable vertex attributes
