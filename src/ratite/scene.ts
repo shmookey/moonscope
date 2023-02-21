@@ -2,7 +2,7 @@ import type {
   CameraNode, DrawCallDescriptor, GPUContext, LightSourceNode,
   LightSourceNodeDescriptor, Mat4, Model, ModelNode, Node, NodeDescriptor,
   Quat, Renderer, Scene, SceneGraph, SceneGraphDescriptor, TransformDescriptor,
-  TransformNode, Vec2, Vec3, Vec4, View, ProjectionDescriptor, DirtyFlag, MeshResource
+  TransformNode, Vec2, Vec3, Vec4, View, ProjectionDescriptor, DirtyFlag, MeshResource, BoundingVolume, MetaMaterial
 } from "./types"
 import * as Skybox from './skybox.js'
 import {createCamera, createFirstPersonCamera} from './camera.js'
@@ -10,7 +10,7 @@ import {mat4, quat, glMatrix, vec4, vec3} from 'gl-matrix'
 import {activateInstance, addInstance, deactivateAllInstances, deactivateInstance, registerAllocation, setInstanceTransform, syncInstanceBuffers, updateInstanceData} from "./instance.js"
 import {getMeshById, getMeshByName} from "./mesh.js"
 import {DirtyFlags, INITIAL_DIRTY_FLAGS, UNIFORM_BUFFER_OFFSET_PROJECTION, UNIFORM_BUFFER_OFFSET_VIEW} from "./constants.js"
-import {expandBoundingVolume, frustumTest, identityMatrix, latLonToUnitVec, resetBoundingVolume, transformedBoundingVolume} from "./common.js"
+import {createBoundingVolume, expandBoundingVolume, frustumTest, identityMatrix, latLonToUnitVec, resetBoundingVolume, transformedBoundingVolume} from "./common.js"
 import {createGeometryBindGroup, createMaterialsBindGroup, createMainUniformBuffer} from "./pipeline.js"
 import {activateLightSource, applyLightSourceDescriptor, applyLightSourceTransformMatrix, createLightingState, createLightSource, deactivateLightSource, updateLightingBuffer} from "./lighting.js"
 import { useMaterialByName } from "./material.js"
@@ -208,7 +208,7 @@ function _updateLightActivation(activate: boolean, node: Node, scene: SceneGraph
 export function setTransform(transform: TransformDescriptor, node: Node): void {
   computeMatrix(transform, node.transform)
   setDirty(DirtyFlags.ALL, node)
-}
+} 
 
 /** Set the translation component of a node's transform matrix. */
 export function setTranslation(translation: Vec3, node: Node): void {
@@ -473,7 +473,7 @@ export function createLightSourceNode(
     children:        [],
     lightSource:     lightSource,
     hidden:          false,
-    castShadows:     descriptor.castShadows || false,
+    makeShadows:     descriptor.makeShadows || false,
     view:            view,
     dirty:           INITIAL_DIRTY_FLAGS,
     _worldTransform: mat4.create() as Mat4,
@@ -489,7 +489,7 @@ export function createLightSourceNode(
   if(view) {
     view.node = node
   }
-  if(descriptor.castShadows && view) {
+  if(descriptor.makeShadows && view) {
     const shadowMap = createShadowMap(lightSource, sceneGraph.renderer.shadowMapper)
     view.shadowMapId = shadowMap.id
     calculateLightProjection(lightSource, view.projection)
@@ -582,7 +582,7 @@ export function registerSceneGraphModel(
  * 4. If the parent's root property is null, return.
  * 5. Recursively update the root for the node subtree.
  * 6. If any ancestor node is hidden, return.
- * 7. Recursively activate the node subtree for drawing. TODO: this is not right. we only deal with lights here
+ * 7. Recursively activate lights in the node subtree.
  */
 export function attachNode(
   node:       Node,
@@ -880,7 +880,34 @@ export function getModel(node: ModelNode, scene: SceneGraph): Model {
   return model
 }
 
+/** Get the meta-material of a model node. */
+export function getNodeMetaMaterial(node: ModelNode, scene: SceneGraph): MetaMaterial {
+  const model = getModel(node, scene)
+  return model.metaMaterial
+}
 
+/** Calculate the bounding volume of visible shadow casters.
+ * 
+ * Assumes that the bounding volumes of all nodes are up to date, since they
+ * are being taken from the frustum nodes.
+ */
+export function getShadowCasterBounds(
+    scene: SceneGraph, 
+    out: BoundingVolume = createBoundingVolume()): BoundingVolume {
+
+  // Reset the bounding volume
+  resetBoundingVolume(out)
+
+  // Add the bounding volume of each shadow caster
+  for(const node of scene.frustumNodes) {
+    const metaMaterial = getNodeMetaMaterial(node, scene)
+    if(!metaMaterial.castShadows)
+      continue
+    expandBoundingVolume(out, node._boundingVolume)
+  }
+
+  return out
+}
 
 
 /** Update dirty world transform matrices.
@@ -1027,7 +1054,7 @@ function _updateFrustumTests(viewProjection: Mat4, node: Node, scene: SceneGraph
     frustumCull(node)
     return
   }
-  if(node.nodeType === 'model' || node.nodeType === 'light')
+  if(node.nodeType === 'model')
     scene.frustumNodes.push(node)
   for(const child of node.children)
     _updateFrustumTests(viewProjection, child, scene)
@@ -1051,15 +1078,8 @@ export function updateDrawCalls(scene: SceneGraph): void {
     drawCall.instanceCount = 0
   // Activate the instances for the models in the frustum
   for(const node of scene.frustumNodes) {
-    switch(node.nodeType) {
-    case 'model':
-      activateInstance(node.instanceId, scene.renderer.instanceAllocator)
-      scene.forwardDrawCalls[node.drawCallId].instanceCount++
-      break
-    case 'light':
-      // TODO: maybe something here later
-      break
-    }
+    activateInstance(node.instanceId, scene.renderer.instanceAllocator)
+    scene.forwardDrawCalls[node.drawCallId].instanceCount++
   }
 }
 

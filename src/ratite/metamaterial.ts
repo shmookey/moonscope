@@ -147,13 +147,14 @@ export function createMetaMaterial(
   })
 
   const metaMaterial: MetaMaterial = {
-    id:     state.nextMetaMaterialID++,
-    name:   descriptor.name,
-    layout: descriptor.layout,
-    usage:  0,
+    id:          state.nextMetaMaterialID++,
+    name:        descriptor.name,
+    layout:      descriptor.layout,
+    usage:       0,
+    castShadows: descriptor.castShadows ?? true,
     pipelines: {
-      forward: forwardPipeline,
-      shadow:  shadowPipeline,
+      forward:   forwardPipeline,
+      shadow:    shadowPipeline,
     },
   }
 

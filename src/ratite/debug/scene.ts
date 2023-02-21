@@ -81,9 +81,9 @@ export function inspectNode(node: Node, state: SceneInspectorState): void {
     break
   case 'light':
     const lightType = createNodePropRow('light-type', lightTypeNames.get(node.lightSource.type))
-    const castShadows = createNodePropRow('cast-shadows', node.castShadows ? 'yes' : 'no')
+    const makeShadows = createNodePropRow('cast-shadows', node.makeShadows ? 'yes' : 'no')
     const lightView = createNodePropRow('view', node.view.name, node.view.name)
-    table.append(lightType, castShadows, lightView)
+    table.append(lightType, makeShadows, lightView)
   case 'camera':
     const cameraView = createNodePropRow('view', node.view.name, node.view.name)
     table.append(cameraView)
@@ -213,9 +213,9 @@ export function createNodeElement(node: Node, state: SceneInspectorState): HTMLE
     break
   case 'light':
     const lightType = createInlineNodeProp('light-type', lightTypeNames.get(node.lightSource.type))
-    const castShadows = createInlineNodeProp('cast-shadows', node.castShadows ? 'yes' : 'no')
+    const makeShadows = createInlineNodeProp('cast-shadows', node.makeShadows ? 'yes' : 'no')
     const lightView = createInlineNodeProp('view', node.view.name, node.view.name)
-    props.append(lightType, castShadows, lightView)
+    props.append(lightType, makeShadows, lightView)
   case 'camera':
     const cameraView = createInlineNodeProp('view', node.view.name, node.view.name)
     props.append(cameraView)

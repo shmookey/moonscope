@@ -195,3 +195,4 @@ export function getShadowMap(id: number, shadowMapper: ShadowMapperState): Shado
     throw new RatiteError('NotFound', 'No shadow map with that ID.')
   return shadowMap
 }
+

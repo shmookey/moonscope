@@ -398,7 +398,7 @@ export type SceneGraph = {
   materialsBindGroup: GPUBindGroup,
   geometryBindGroup:  GPUBindGroup,
   geometricNodes:     (ModelNode | CameraNode | LightSourceNode)[],
-  frustumNodes:       Node[],
+  frustumNodes:       ModelNode[],
 }
 
 /** Scene node. */
@@ -431,7 +431,7 @@ export interface BaseNode {
 export interface LightSourceNode extends BaseNode {
   nodeType:    'light',
   lightSource: LightSource,
-  castShadows: boolean,
+  makeShadows: boolean,
   view:        View | null,
 }
 
@@ -442,6 +442,7 @@ export interface ModelNode extends BaseNode {
   modelName:     string,
   drawCallId:    number,
   material:      string | null, // Material override
+  
   _instanceData: InstanceData,  // Temporary storage of instance data fields
 }
 
@@ -576,15 +577,16 @@ export interface LightSourceNodeDescriptor extends BaseNodeDescriptor {
   diffuse?:     Vec4,
   specular?:    Vec4,
   cone?:        Vec2,
-  castShadows?: boolean,
+  makeShadows?: boolean,
   view?:        string,
 }
 
 /** Model node, a type of leaf node. */
 export interface ModelNodeDescriptor extends BaseNodeDescriptor {
-  type:      'model',
-  modelName: string,
-  material?: string,
+  type:         'model',
+  modelName:    string,
+  material?:    string,
+  castShadows?: boolean,
 }
 
 /** Transform node. */
@@ -855,6 +857,7 @@ export type MetaMaterial = {
   id:          number,                 // Unique ID for metamaterial
   name:        string,                 // Human-readable name
   usage:       number,                 // Reference count
+  castShadows: boolean,                // Whether to enable shadow mapping
   descriptor?: MetaMaterialDescriptor, // Descriptor object
   layout:      StructureLayout,        // Layout of material uniform buffer
   pipelines: {                         // Compiled render pipelines:
@@ -871,6 +874,7 @@ export type MetaMaterialDescriptor = {
   depthWrite?:       boolean,            // Whether to enable depth writing (default: true)
   cullMode?:         GPUCullMode,        // Culling mode (default: 'back')
   frontFace?:        GPUFrontFace,       // Front face winding order (default: 'ccw')
+  castShadows?:      boolean,            // Whether to enable shadow mapping (default: true)
   shadowDepthWrite?: boolean,            // Whether to enable depth writing for shadow mapping (default: true)
   shadowCullMode?:   GPUCullMode,        // Culling mode for shadow mapping (default: 'back')
   layout:            StructureLayout,    // Layout of material uniform buffer
