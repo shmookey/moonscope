@@ -2,7 +2,7 @@
 
 import type { DepthMapExporter } from "./ratite/debug/depth.js";
 import { RatiteError } from "./ratite/error.js";
-import type { CameraNode, ErrorType, GPUContext, Renderer, Scene, SceneGraph } from "./ratite/types"
+import type { Node, CameraNode, ErrorType, GPUContext, LightSource, Mat4, Renderer, Scene, SceneGraph, View } from "./ratite/types"
 import type { Telescope } from "./telescope"
 
 //
@@ -12,14 +12,14 @@ import type { Telescope } from "./telescope"
 export type MessageType = 
   // Page to worker:
     'init' | 'start' | 'stop' | 'input' | 'getState' | 'debugWorker' |
-    'getDepthImage' |
+    'getDepthImage' | 'query' |
   // Worker to page:
-    'ready' | 'info' | 'error' | 'started' | 'stopped' | 'response' 
+    'ready' | 'info' | 'error' | 'started' | 'stopped' | 'response' | 'queryResult'
 export type Message = 
     InitMessage | StartMessage | StopMessage | InputMessage | GetStateMessage |
     InfoMessage | ErrorMessage | ReadyMessage | StartedMessage | StoppedMessage | ResponseMessage |
-    DebugWorkerMessage | GetDepthImageMessage
-  
+    DebugWorkerMessage | GetDepthImageMessage | QueryMessage | QueryResultMessage
+
 
 
 /** Base type for message-based communication between workers and the main thread.
@@ -74,6 +74,18 @@ export interface GetDepthImageMessage extends MessageBase {
   layer: number,                    // Layer to get.
 }
 
+/** Query worker. */
+export interface QueryMessage extends MessageBase {
+  type:  'query',   // Message type.
+  query: Query,     // Query type.
+}
+
+/** Query response. */
+export interface QueryResultMessage extends MessageBase {
+  type:      'queryResult', // Message type.
+  result:    QueryResult,   // Result data.
+}
+
 
 /** Message sent from a worker to the page to provide status and performance information. */
 export interface InfoMessage extends MessageBase {
@@ -113,6 +125,111 @@ export interface StartedMessage extends MessageBase {
 /** Message to announce that a worker has stopped. */
 export interface StoppedMessage extends MessageBase {
   type: 'stopped',         // Message type.
+}
+
+//
+//    Queries
+//
+
+export type QueryType = 
+  'getViews' | 
+  'getSceneGraph' | 
+  'getLights' |
+  'getDrawCalls' | 
+  'getShadowMaps' |
+  'getShadowMapImage' |
+  'getInstances' | 
+  'getMaterials' 
+
+export type Query = 
+  GetViewsQuery | 
+  GetSceneGraphQuery | 
+  GetLightsQuery |
+  GetShadowMapsQuery |
+  GetShadowMapImageQuery
+
+/** Base type for queries. */
+export interface QueryBase {
+  queryType: QueryType,     // Query type.
+}
+
+/** Query for 'getSceneGraph'. */
+export interface GetSceneGraphQuery extends QueryBase {
+  queryType: 'getSceneGraph',       // Query type.
+}
+
+/** Query for `getViews`. */
+export interface GetViewsQuery extends QueryBase {
+  queryType: 'getViews',             // Query type.
+}
+
+/** Query for `getShadowMaps`. */
+export interface GetShadowMapsQuery extends QueryBase {
+  queryType: 'getShadowMaps',             // Query type.
+}
+
+/** Query for `getLights`. */
+export interface GetLightsQuery extends QueryBase {
+  queryType: 'getLights',             // Query type.
+}
+
+/** Query for `getShadowMapImage`. */
+export interface GetShadowMapImageQuery extends QueryBase {
+  queryType:  'getShadowMapImage',    // Query type.
+  shadowMapId: number,                // Shadow map ID.
+  depthMin:    number,                // Minimum depth value.
+  depthMax:    number,                // Maximum depth value.
+}
+
+/** Base type for query results. */
+export interface QueryResultBase {
+  queryType: QueryType,     // Query type.
+}
+
+export type QueryResult = 
+  GetViewsResult | 
+  GetShadowMapsResult | 
+  GetShadowMapImageResult |
+  GetSceneGraphResult | 
+  GetLightsResult
+
+/** Query result for 'getSceneGraph'. */
+export interface GetSceneGraphResult extends QueryResultBase {
+  queryType: 'getSceneGraph',       // Query type.
+  sceneGraph: Node,                 // Scene graph root node.
+}
+
+/** Query result for `getViews`. */
+export interface GetViewsResult extends QueryResultBase {
+  queryType: 'getViews',             // Query type.
+  views:     View[],                 // View info.
+}
+
+/** Query result for `getShadowMaps`. */
+export interface GetShadowMapsResult extends QueryResultBase {
+  queryType: 'getShadowMaps',             // Query type.
+  shadowMaps: ShadowMapInfo[],            // Shadow map info.
+}
+
+/** Query result for `getShadowMapImage`. */
+export interface GetShadowMapImageResult extends QueryResultBase {
+  queryType:   'getShadowMapImage',           // Query type.
+  image:       ImageBitmap,                   // Image data.
+}
+
+/** Query result for `getLights`. */
+export interface GetLightsResult extends QueryResultBase {
+  queryType: 'getLights',             // Query type.
+  lights:    LightSource[],           // Light info.
+}
+
+/** Info object for ShadowMap types. */
+export type ShadowMapInfo = {
+  id:          number,
+  slot:        number,
+  lightSource: LightSource,
+  layer:       number,
+  _matrix:     Mat4,
 }
 
 
@@ -165,6 +282,7 @@ export type WorkerController = {
   listeners: {[type: string]: ((message: Message) => void)[]},
   nextId:    number, // Next message ID
   callbacks: {[id: number]: (message: Message) => void},
+  queries:   {[id: number]: (message: QueryResult) => void},
 }
 
 

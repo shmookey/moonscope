@@ -16,6 +16,7 @@ export type DepthMapExporter = {
   uniformBuffer: GPUBuffer,
   uniformData:   ArrayBuffer,
   uniformView:   DataView,
+  activeTask:    Promise<void> | null,
 }
 
 /** Create a depth map exporter. */
@@ -131,6 +132,7 @@ export function createDepthMapExporter(
     uniformBuffer,
     uniformData,
     uniformView,
+    activeTask: null,
   }
 }
 
@@ -140,6 +142,10 @@ export async function exportDepthMapLayer(
     depthMin: number,
     depthMax: number,
     exporter: DepthMapExporter): Promise<ImageBitmap> {
+
+  while(exporter.activeTask) await exporter.activeTask
+  let onComplete = null
+  exporter.activeTask = new Promise(resolve => onComplete = resolve)
 
   const { device, uniformView } = exporter
   uniformView.setUint32(0, layer, true)
@@ -168,5 +174,8 @@ export async function exportDepthMapLayer(
   const imageData = new ImageData(data, 1024, 1024)
   const imageBitmap = await createImageBitmap(imageData, { imageOrientation: 'flipY' })
   exporter.outputBuffer.unmap()
+
+  exporter.activeTask = null
+  onComplete()
   return imageBitmap
 }

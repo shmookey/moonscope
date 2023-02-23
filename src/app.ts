@@ -14,8 +14,8 @@ import {loadResourceBundleFromDescriptor} from './ratite/resource.js'
 import {Antenna, setAntennaAltitude, setAntennaAzimuth} from './antenna.js'
 import Bundle from '../assets/bundle.json'
 import { createTelescope, defaultTelescopeDescriptor } from './telescope.js'
-import type { ErrorMessage, InfoMessage, InitMessage, Message, ReadyMessage, ResponseMessage } from './types.js'
-import { addWorkerEventListener, createWorkerController, debugWorker, getDepthImage, getStateFromWorker, initWorker, sendInputToWorker, sendWorkerRequest, startWorker, stopWorker } from './controller.js'
+import { ErrorMessage, GetLightsQuery, GetLightsResult, GetSceneGraphQuery, GetSceneGraphResult, GetShadowMapImageQuery, GetShadowMapImageResult, GetShadowMapsQuery, GetShadowMapsResult, GetViewsQuery, GetViewsResult, InfoMessage, InitMessage, Message, Query, QueryType, ReadyMessage, ResponseMessage } from './types.js'
+import { addWorkerEventListener, createWorkerController, debugWorker, getDepthImage, getStateFromWorker, initWorker, queryWorker, sendInputToWorker, sendWorkerRequest, startWorker, stopWorker } from './controller.js'
 import { RatiteError, explainError, formatErrorType } from './ratite/error.js'
 import { createDebugInspector, toggleInspector } from './ratite/debug/ui.js'
 import type { InspectorAgent } from './ratite/debug/common'
@@ -39,7 +39,7 @@ const tempMatrixTransform: MatrixDescriptor = {
 async function main(): Promise<void> {
   const elems = {
     canvas:            initCanvas(),
-    layerCount:        document.querySelector('#layer-count') as HTMLSpanElement,
+    //layerCount:        document.querySelector('#layer-count') as HTMLSpanElement,
     fpsAvg:            document.querySelector('#fps-avg').childNodes[0] as Text,
     fpsMin:            document.querySelector('#fps-min').childNodes[0] as Text,
     fpsMax:            document.querySelector('#fps-max').childNodes[0] as Text,
@@ -101,6 +101,39 @@ async function main(): Promise<void> {
   const debugAgent: InspectorAgent = {
     send: async (message: Message) => {
       return sendWorkerRequest(message, worker)
+    },
+    query: async (query: Query) => {
+      return queryWorker(query, worker)
+    },
+    getSceneGraph: async () => {
+      const query: GetSceneGraphQuery = {queryType: 'getSceneGraph'}
+      const result = await queryWorker<GetSceneGraphResult>(query, worker)
+      return result.sceneGraph
+    },
+    getViews: async () => {
+      const query: GetViewsQuery = {queryType: 'getViews'}
+      const result = await queryWorker<GetViewsResult>(query, worker)
+      return result.views
+    },
+    getShadowMaps: async () => {
+      const query: GetShadowMapsQuery = {queryType: 'getShadowMaps'}
+      const result = await queryWorker<GetShadowMapsResult>(query, worker)
+      return result.shadowMaps
+    },
+    getShadowMapImage: async (shadowMapId: number) => {
+      const query: GetShadowMapImageQuery = {
+        queryType:   'getShadowMapImage', 
+        shadowMapId: shadowMapId,
+        depthMin:    0,
+        depthMax:    1,
+      }
+      const result = await queryWorker<GetShadowMapImageResult>(query, worker)
+      return result.image
+    },
+    getLights: async () => {
+      const query: GetLightsQuery = {queryType: 'getLights'}
+      const result = await queryWorker<GetLightsResult>(query, worker)
+      return result.lights
     }
   }
   
@@ -117,7 +150,7 @@ async function main(): Promise<void> {
   //sceneState.firstPersonCamera.position[1] = CAMERA_HEIGHT
   //app.sceneGraph = sceneGraph
   
-  const layerCountTextNode: Text = elems.layerCount.childNodes[0] as Text
+  //const layerCountTextNode: Text = elems.layerCount.childNodes[0] as Text
   function addVisibilities(count: number) {
 //    if(count > 0) {
 //      Sky.applyLayers(count, skyModel.visState, gpu)
@@ -354,6 +387,7 @@ function setupInput(): void {
 
 function initCanvas(): HTMLCanvasElement {
   const elem = document.createElement('canvas')
+  elem.id = 'viewport-canvas'
   elem.height = window.visualViewport?.height as number
   elem.width = window.visualViewport?.width as number
   document.body.append(elem)

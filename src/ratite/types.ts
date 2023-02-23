@@ -388,8 +388,9 @@ export type SceneGraph = {
   models:             { [name: string]: Model },
   renderer:           Renderer,
   nextDrawCallId:     number,
-  views:              { [name: string]: View }, // Named view objects, connect to cameras and lights
-  activeView:         View | null,              // View currently being rendered
+  views:              ViewSet, // Named view objects, connect to cameras and lights
+  activeCamera:       View | null,              // View for the active camera
+  activeView:         View | null,              // View currently being rendered (camera or light)
   uniformBuffer:      GPUBuffer,
   uniformData:        ArrayBuffer,
   uniformFloats:      Float32Array,
@@ -398,7 +399,6 @@ export type SceneGraph = {
   materialsBindGroup: GPUBindGroup,
   geometryBindGroup:  GPUBindGroup,
   geometricNodes:     (ModelNode | CameraNode | LightSourceNode)[],
-  frustumNodes:       ModelNode[],
 }
 
 /** Scene node. */
@@ -418,6 +418,7 @@ export interface BaseNode {
   children:        Node[],         // Child nodes
   hidden:          boolean,        // Visibility toggle
   dirty:           number,         // Dirty flags
+  cullable:        boolean,        // Whether node is cullable
   _boundingVolume: BoundingVolume, // Temporary storage of bounding volume
   _worldTransform: Mat4,           // Temporary storage of world transform
   _modelView:      Mat4,           // Temporary storage of model-view matrix
@@ -466,13 +467,18 @@ export interface CameraNode extends BaseNode {
  * nodes.
  */
 export type View = {
-  name:        string,
-  projection:  Mat4,
-  viewMatrix:  Mat4,
-  node:        CameraNode | LightSourceNode | null,
-  shadowMapId: number | null,
-  active:      boolean, // Is this the active view?
+  name:         string,
+  type:         ViewType,
+  projection:   Mat4,
+  viewMatrix:   Mat4,
+  node:         CameraNode | LightSourceNode | null,
+  shadowMapId:  number | null,
+  //active:       boolean,     // Is this the active view for
+  frustumTest:  boolean,     // Perform frustum testing?
+  frustumNodes: ModelNode[], // Model nodes in frustum, if frustum test is enabled
 }
+
+export type ViewSet = {[name: string]: View}
 
 export type DirtyFlag = number
 
@@ -502,17 +508,18 @@ export type Frustum = {
 
 
 export type SceneGraphDescriptor = {
-  name:    string,
-  root?:   NodeDescriptor,
-  models?: ModelDescriptor[],
-  views?:  ViewDescriptor[],
+  name:           string,
+  root?:          NodeDescriptor,
+  models?:        ModelDescriptor[],
+  views?:         ViewDescriptor[],
+  defaultCamera?: string,               // Node name of default camera
 }
 
 export type ViewDescriptor = {
-  name:       string,
-  type:       ViewType,
-  projection: ProjectionDescriptor,
-  active?:    boolean,               // Is this the active view?
+  name:         string,
+  type:         ViewType,
+  projection:   ProjectionDescriptor,
+  frustumTest?: boolean,             // Perform frustum testing? (default: true)
 }
 
 /** View type. */
@@ -562,7 +569,8 @@ export interface BaseNodeDescriptor {
   type:       NodeType,
   transform?: TransformDescriptor,
   children?:  NodeDescriptor[],
-  hidden?:    boolean,
+  hidden?:    boolean, // Whether node is hidden (default false)
+  cullable?:  boolean, // Whether node is cullable (default true)
 }
 
 /** Light source node descriptor.

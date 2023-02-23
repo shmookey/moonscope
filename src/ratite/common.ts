@@ -1,4 +1,4 @@
-import { mat4, vec4, glMatrix } from "gl-matrix"
+import { mat4, vec4, glMatrix, vec3 } from "gl-matrix"
 import type {BoundingVolume, Mat4, Vec2, Vec3, Vec4} from "./types"
 const { sin, cos, atan2, sqrt } = Math
 glMatrix.setMatrixArrayType(Array)
@@ -167,9 +167,66 @@ export function pointInFrustum(point: Vec4, viewProjection: Mat4): boolean {
   return x >= -w && x <= w && y >= -w && y <= w && z >= -w && z <= w
 }
 
+// Bounding volume corners
+const _bvCorners = [
+  [0,0,0], // -X -Y -Z
+  [0,0,0], // +X -Y -Z
+  [0,0,0], // +X +Y -Z
+  [0,0,0], // -X +Y -Z
+  [0,0,0], // -X -Y +Z
+  [0,0,0], // +X -Y +Z
+  [0,0,0], // +X +Y +Z
+  [0,0,0], // -X +Y +Z
+] as Vec3[]
 
 
+/** Get the corners of a bounding volume. */
+export function getBoundingVolumeCorners(volume: BoundingVolume, out: Vec3[] = _bvCorners): Vec3[] {
+  const minX = volume.min[0]
+  const minY = volume.min[1]
+  const minZ = volume.min[2]
+  const maxX = volume.max[0]
+  const maxY = volume.max[1]
+  const maxZ = volume.max[2]
 
+  out[0][0] = minX; out[0][1] = minY; out[0][2] = minZ
+  out[1][0] = maxX; out[1][1] = minY; out[1][2] = minZ
+  out[2][0] = maxX; out[2][1] = maxY; out[2][2] = minZ
+  out[3][0] = minX; out[3][1] = maxY; out[3][2] = minZ
+  out[4][0] = minX; out[4][1] = minY; out[4][2] = maxZ
+  out[5][0] = maxX; out[5][1] = minY; out[5][2] = maxZ
+  out[6][0] = maxX; out[6][1] = maxY; out[6][2] = maxZ
+  out[7][0] = minX; out[7][1] = maxY; out[7][2] = maxZ
+
+  return out
+}
+
+/** Get the bounding volume of a transformed bounding volume. */
+export function getTransformedBoundingVolume(volume: BoundingVolume, transform: Mat4, out: BoundingVolume = createBoundingVolume()): BoundingVolume {
+  const corners = getBoundingVolumeCorners(volume)
+  corners.forEach(c => vec3.transformMat4(c, c, transform))
+  getPointsBoundingVolume(corners, out)
+   return out
+}
+
+/** Get the bounding volume of a list of points. */
+export function getPointsBoundingVolume(points: Vec3[], out: BoundingVolume = createBoundingVolume()): BoundingVolume {
+  let minX = Infinity
+  let minY = Infinity
+  let minZ = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  let maxZ = -Infinity
+  for(const p of points) {
+    minX = Math.min(minX, p[0])
+    minY = Math.min(minY, p[1])
+    minZ = Math.min(minZ, p[2])
+    maxX = Math.max(maxX, p[0])
+    maxY = Math.max(maxY, p[1])
+    maxZ = Math.max(maxZ, p[2])
+  }
+  return out
+}
 
 export function latLonToUnitVec(c: Vec2): Vec3 {
   const [lat,lon] = c

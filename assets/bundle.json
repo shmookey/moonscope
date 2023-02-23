@@ -12,12 +12,12 @@
   ],
   "metaMaterials": [
     {
-      "name":       "default",
-      "alphaBlend": false,
-      "depthTest":  "less",
-      "depthWrite": true,
-      "cullMode":   "back",
-      "frontFace":  "ccw",
+      "name":           "default",
+      "alphaBlend":     false,
+      "depthTest":      "less",
+      "depthWrite":     true,
+      "cullMode":       "back",
+      "frontFace":      "ccw",
       "shadowCullMode": "none",
       "layout": {
       },
@@ -34,6 +34,7 @@
       "depthWrite": true,
       "cullMode":   "back",
       "frontFace":  "ccw",
+      "castShadows": false,
       "shadowCullMode": "none",
       "layout": {
       },
@@ -67,6 +68,7 @@
       "depthWrite":       false,
       "cullMode":         "back",
       "frontFace":        "cw",
+      "castShadows":      false,
       "shadowCullMode":   "none",
       "shadowDepthWrite": false,
       "layout": {
@@ -141,6 +143,7 @@
   "scenes": [
     {
       "name": "default",
+      "defaultCamera": "camera-fps",
       "models": [
         {"name": "skybox",        "mesh": "cube",          "pipeline": "entity-pbr-wrapped", "metaMaterial": "skybox-procedural", "maxInstances":   1},
         {"name": "floor:sand",    "mesh": "ground",        "pipeline": "entity-pbr-wrapped", "metaMaterial": "default-wrap", "maxInstances":   1},
@@ -155,15 +158,15 @@
       "root": {
         "type": "transform",
         "children": [
-          { "name": "skybox", "type": "model", "modelName": "skybox" },
+          { "name": "skybox", "type": "model", "modelName": "skybox", "cullable": false },
           { "type": "transform", "transform": {"type": "trs", "translation": [0, 0, 0]}, 
             "children": [
-              { "name": "camera-fps", "type": "camera", "view": "default" }]},
-          { "name": "sunlight", "type": "transform", 
+              { "name": "camera-fps", "type": "camera", "view": "first-person-view" }]},
+          { "name": "sunlight-group", "type": "transform", 
             "transform": {"type": "trs", "translation": [3, 10, 3], "rotateEuler":[-45, 60, 0] },
             "children": [
               { "type": "model", "modelName": "point-light", "transform": {"type": "trs", "scale": [0.1, 0.1, 0.1]}, "material": "light-cube" },
-              { "type": "light", "lightType": "directional", "makeShadows": true, "view": "shadow-caster-1", "attenuation": [1, 0, 0.001, 0], "ambient": [0.2, 0.2, 0.2, 1], "diffuse": [0.5, 0.5, 0.5, 1], "specular": [1, 1, 1, 1] }
+              { "name": "sunlight", "type": "light", "lightType": "directional", "makeShadows": true, "view": "sunlight-view", "attenuation": [1, 0, 0.001, 0], "ambient": [0.2, 0.2, 0.2, 1], "diffuse": [0.5, 0.5, 0.5, 1], "specular": [1, 1, 1, 1] }
             ]},
           { "name": "floor", "type": "model", "modelName": "floor:sand" },
           { "name": "test-cube", "type": "model", "modelName": "cube", "transform": {"type": "trs", "translation": [0, 0.5, -2], "scale": [0.5,0.5,0.5]} },
@@ -186,9 +189,10 @@
       },
       "views": [
         {
-          "name": "default",
-          "active": true,
-          "type": "camera",
+          "name":        "first-person-view",
+          "active":      true,
+          "type":        "camera",
+          "frustumTest": true,
           "projection": {
             "type":   "perspective",
             "fovy":   80,
@@ -197,8 +201,9 @@
             "far":    "Infinity"
           }
         }, {
-          "name": "shadow-caster-1",
-          "type": "light"
+          "name":       "sunlight-view",
+          "type":       "light",
+          "frustumTest": false
         }
       ]
     }

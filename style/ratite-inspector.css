@@ -50,6 +50,18 @@
   cursor:     pointer;
 }
 
+.ri-title-bar button.ri-sticky {
+  color: #66d;
+}
+
+.ri-title-bar button.ri-sticky:hover {
+  color: #88d;
+}
+
+.ri-title-bar button.ri-sticky:active {
+  color: #44d;
+}
+
 .ri-title-bar button:hover {
   color: #ccc;
 }
@@ -98,7 +110,7 @@
   overflow-y: auto;
 }
 
-.ri-scene-inspector {
+.ri-scene-inspector, .ri-view-inspector {
   display: flex;
   flex-direction: row;
 }
@@ -107,27 +119,34 @@
   overflow-x: hidden;
 }
 
-.ri-scene-inspector-properties {
+.ri-properties-pane {
   width: 50%;
   margin-left: 20px;
 }
 
-.ri-scene-inspector-properties-table {
-  display: grid;
-  grid-template-columns: 1fr 2fr;
+.ri-properties-pane-header, .ri-entity-list-header {
+  color: #fff;
+  font-weight: bold;
+  margin-bottom: 5px;
 }
 
-.ri-node-prop-table-row {
+.ri-properties-table {
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) 2fr;
+}
+
+.ri-prop-table-row {
   display: contents;
   margin: 2px 0;
 }
 
-.ri-node-prop-table-label {
+.ri-prop-table-label {
   grid-column: 1;
   color:       #aaa;
+  margin-right: 10px;
 }
 
-.ri-node-prop-table-value {
+.ri-prop-table-value {
   grid-column: 2;
   color:       #fff;
 }
@@ -137,7 +156,6 @@
   margin:  0;
   display: flex;
   flex-direction: column;
-  width: max-content;
   text-overflow: ellipsis;
 }
 
@@ -156,7 +174,6 @@
 .ri-node-properties {
   display: flex;
   flex-direction: row;
-  flex-wrap: wrap;
 }
 
 .ri-node-hidden {
@@ -165,6 +182,7 @@
 
 .ri-node-prop {
   margin: 0 5px;
+  width: max-content;
 }
 
 .ri-node-children {
@@ -191,6 +209,15 @@
   outline: none;
 }
 
+.ri-prop-value-list {
+  display:        flex;
+  flex-direction: column;
+}
+
+.ri-node-link {
+  color: #fff;
+}
+
 .ri-matrix-4x4 {
   display:               grid;
   grid-template-columns: repeat(4, 50px);
@@ -212,7 +239,53 @@
   text-align:            right;
 }
 
-.ri-matrix-cell {
- 
+.ri-prop-table-section-label {
+  color: #fff;
+  margin-top: 5px;
+}
+
+.ri-prop-image {
+  width:   256px;
+  height:  256px;
+  margin:  2px;
+  padding: 0px;
+  border:  1px solid #aaa;
+  contain: content;
+}
+
+.ri-prop-image canvas {
+  width:  256px;
+  height: 256px;
+}
+
+.ri-entity-list {
+  margin-right: 10px;
+  cursor:       default;
+  width:        max-content;
+}
+
+.ri-entity-list-item {
+  padding: 0 15px;
+  padding-bottom: 1px;
+}
+
+.ri-entity-list-item:hover {
+  background-color: #222;
+}
+
+.ri-entity-list-item:active {
+  background-color: #444;
+}
+
+.ri-entity-list-item.ri-selected {
+  background-color: #333;
+}
+
+.ri-entity-list-item.ri-selected:hover {
+  background-color: #333;
+}
+
+.ri-entity-list-item.ri-selected:active {
+  background-color: #333;
 }
 

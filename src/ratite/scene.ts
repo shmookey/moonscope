@@ -2,7 +2,7 @@ import type {
   CameraNode, DrawCallDescriptor, GPUContext, LightSourceNode,
   LightSourceNodeDescriptor, Mat4, Model, ModelNode, Node, NodeDescriptor,
   Quat, Renderer, Scene, SceneGraph, SceneGraphDescriptor, TransformDescriptor,
-  TransformNode, Vec2, Vec3, Vec4, View, ProjectionDescriptor, DirtyFlag, MeshResource, BoundingVolume, MetaMaterial
+  TransformNode, Vec2, Vec3, Vec4, View, ProjectionDescriptor, DirtyFlag, MeshResource, BoundingVolume, MetaMaterial, ViewType
 } from "./types"
 import * as Skybox from './skybox.js'
 import {createCamera, createFirstPersonCamera} from './camera.js'
@@ -14,7 +14,7 @@ import {createBoundingVolume, expandBoundingVolume, frustumTest, identityMatrix,
 import {createGeometryBindGroup, createMaterialsBindGroup, createMainUniformBuffer} from "./pipeline.js"
 import {activateLightSource, applyLightSourceDescriptor, applyLightSourceTransformMatrix, createLightingState, createLightSource, deactivateLightSource, updateLightingBuffer} from "./lighting.js"
 import { useMaterialByName } from "./material.js"
-import { calculateLightProjection, createShadowMap, getShadowMap, updateShadowMap } from "./shadow.js"
+import { calculateDirectionalLightMatrices, calculateLightProjection, createShadowMap, getShadowMap, updateShadowMap } from "./shadow.js"
 import { RatiteError } from "./error.js"
 const { PI } = Math
 glMatrix.setMatrixArrayType(Array)
@@ -72,6 +72,7 @@ export function createSceneGraph(
     children:        [],
     hidden:          false,
     dirty:           INITIAL_DIRTY_FLAGS,
+    cullable:        false,
     _worldTransform: mat4.create() as Mat4,
     _modelView:      mat4.create() as Mat4,
     _inFrustum:      true,
@@ -100,8 +101,8 @@ export function createSceneGraph(
     geometryBindGroup:  geometryBindGroup,
     materialsBindGroup: materialsBindGroup,
     activeView:         null,
+    activeCamera:       null,
     geometricNodes:     [],
-    frustumNodes:       new Array(1000),
   }
 }
 
@@ -124,26 +125,37 @@ export function createSceneGraphFromDescriptor(
   }
   if(descriptor.views) {
     for(let viewDescriptor of descriptor.views) {
+      const frustumTest = 'frustumTest' in viewDescriptor ? viewDescriptor.frustumTest : true
       const view = createSceneView(
         viewDescriptor.name, 
+        viewDescriptor.type,
+        frustumTest,
         sceneGraph,
         viewDescriptor.projection, 
       )
-      if(viewDescriptor.active === true) {
-        if(sceneGraph.activeView)
-          throw new RatiteError('InvalidArgument', `Descriptor for scene graph ${sceneGraph.label} has multiple active views.`)
-        sceneGraph.activeView = view
-        view.active = true
-      }
+      //if(viewDescriptor.active === true) {
+      //  if(sceneGraph.activeView)
+      //    throw new RatiteError('InvalidArgument', `Descriptor for scene graph ${sceneGraph.label} has multiple active views.`)
+      //  sceneGraph.activeView = view
+      //  view.active = true
+      //}
     }
   }
   if(descriptor.root) {
     const root = createNodeFromDescriptor(descriptor.root, sceneGraph)
     attachNode(root, sceneGraph.root, sceneGraph)
     sceneGraph.root = root
-    root.name = 'root'
-    root.root = root
-    root.parent = null
+    root.name       = 'root'
+    root.root       = root
+    root.parent     = null
+  }
+  if(descriptor.defaultCamera) {
+    const node = getNodeByName(descriptor.defaultCamera, sceneGraph)
+    if(!node)
+      throw new RatiteError('NotFound', `Descriptor for scene graph ${sceneGraph.label} specifies default camera ${descriptor.defaultCamera} which does not exist.`)
+    if(node.nodeType != 'camera')
+      throw new RatiteError('InvalidArgument', `Descriptor for scene graph ${sceneGraph.label} specifies default camera ${descriptor.defaultCamera} which is not a camera node.`)
+    setSceneCamera(node.view, sceneGraph)
   }
   return sceneGraph
 }
@@ -172,6 +184,8 @@ export function createNodeFromDescriptor(
   }
   if('hidden' in descriptor)
     setNodeHidden(descriptor.hidden, node, sceneGraph)
+  if('cullable' in descriptor)
+    node.cullable = descriptor.cullable
   return node
 }
 
@@ -309,6 +323,8 @@ export function cloneNode(node: Node, sceneGraph: SceneGraph): Node {
 /** Create a view. */
 export function createSceneView(
     name:                  string, 
+    type:                  ViewType,
+    frustumTest:           boolean,
     sceneGraph:            SceneGraph,
     projectionDescriptor?: ProjectionDescriptor, 
     ): View {
@@ -316,12 +332,15 @@ export function createSceneView(
     throw new Error(`View ${name} already exists.`)
   }
   const view: View = {
-    name:        name,
-    projection:  mat4.create() as Mat4,
-    viewMatrix:  mat4.create() as Mat4,
-    node:        null,
-    shadowMapId: null,
-    active:      false,
+    name:         name,
+    type:         type,
+    projection:   mat4.create() as Mat4,
+    viewMatrix:   mat4.create() as Mat4,
+    node:         null,
+    shadowMapId:  null,
+    //active:       false,
+    frustumTest:  frustumTest,
+    frustumNodes: [],
   }
   if(!projectionDescriptor) {
     // TODO: worth getting this from the light source now?
@@ -393,6 +412,7 @@ export function createModelNode(
     material:        materialName,
     _instanceData:   instanceData,
     dirty:           INITIAL_DIRTY_FLAGS,
+    cullable:        true,
     _worldTransform: mat4.create() as Mat4,
     _modelView:      mat4.create() as Mat4,
     _inFrustum:      true,
@@ -428,6 +448,7 @@ export function createCameraNode(viewName: string | null, sceneGraph: SceneGraph
     view:            view,
     hidden:          false,
     dirty:           INITIAL_DIRTY_FLAGS,
+    cullable:        true,
     _worldTransform: mat4.create() as Mat4,
     _modelView:      mat4.create() as Mat4,
     _inFrustum:      true,
@@ -476,6 +497,7 @@ export function createLightSourceNode(
     makeShadows:     descriptor.makeShadows || false,
     view:            view,
     dirty:           INITIAL_DIRTY_FLAGS,
+    cullable:        true,
     _worldTransform: mat4.create() as Mat4,
     _modelView:      mat4.create() as Mat4,
     _inFrustum:      true,
@@ -508,6 +530,7 @@ export function createTransformNode(sceneGraph: SceneGraph): Node {
     children:        [],
     hidden:          false,
     dirty:           INITIAL_DIRTY_FLAGS,
+    cullable:        true,
     _worldTransform: mat4.create() as Mat4,
     _modelView:      mat4.create() as Mat4,
     _inFrustum:      true,
@@ -674,50 +697,56 @@ export function getChildNodeByName(name: string, node: Node): Node | null {
   return null
 }
 
-/** Update modelView matrices of all the visible nodes in the scene graph for
- * the given view.
+/** Prepare for rendering a framem.
  * 
- * Do this at the start of a render pass to put all the models and lights in
- * view space.
+ * Updates world-space transforms, bounding volumes, performs frustum tests for
+ * the currently active camera, and updates draw call lists.
  */
-export function prepareForwardRender(scene: SceneGraph): void {
-  const view = scene.activeView
-
-  updateWorldTransforms(scene.root)
+export function prepareFrame(scene: SceneGraph): void {
+  updateWorldTransforms(scene.root, scene)
   updateBoundingVolumes(scene.root, scene)
-  updateModelViews(scene.root, scene)
   updateFrustumTests(scene.root, scene)
   updateDrawCalls(scene)
-  
+}
+
+/** Prepare for rendering a forward pass of the current frame. */
+export function prepareForwardRender(scene: SceneGraph): void {
+  const view = scene.activeView
+  updateModelViews(scene.root, scene)
   scene.uniformFloats.set(view.viewMatrix, UNIFORM_BUFFER_OFFSET_VIEW / 4)
   scene.uniformFloats.set(view.projection, UNIFORM_BUFFER_OFFSET_PROJECTION / 4)
   scene.renderer.device.queue.writeBuffer(scene.uniformBuffer, 0, scene.uniformData)
-
   syncInstanceBuffers(scene.renderer.instanceAllocator, scene.renderer.device)
   updateLightingBuffer(scene.lightingState)
 }
 
-export function prepareShadowRender(cameraView: View, scene: SceneGraph): void {
+/** Prepare for rendering a depth (shadow) pass for the current frame.
+ * 
+ * The active view must have a shadow map attached.
+ */
+export function prepareShadowRender(scene: SceneGraph): void {
   const view = scene.activeView
+  if(view.shadowMapId === null)
+    throw new RatiteError('InvalidOperation', 'No shadow map attached to active view.')
 
-  updateWorldTransforms(scene.root)
-  updateBoundingVolumes(scene.root, scene)
-  updateModelViews(scene.root, scene)
   
-  if(view.shadowMapId !== null) {
-    const lightWorldPos = getNodePosition(view.node)
-    const shadowMap = getShadowMap(view.shadowMapId, scene.renderer.shadowMapper)
-    if(shadowMap.lightSource.type !== 'directional') 
-      mat4.lookAt(view.viewMatrix, lightWorldPos, [0,0,0], [0,1,0]) as Mat4
-
-    const cameraViewMatrix = cameraView.viewMatrix.slice() as Mat4
-
-    mat4.invert(cameraViewMatrix, cameraViewMatrix)
-    mat4.mul(shadowMap._matrix, view.viewMatrix, cameraViewMatrix)
-    mat4.mul(shadowMap._matrix, view.projection, shadowMap._matrix)
-
-    updateShadowMap(shadowMap, scene.renderer.shadowMapper)
+  
+  //const lightWorldPos = getNodePosition(view.node, scene)
+  const shadowMap = getShadowMap(view.shadowMapId, scene.renderer.shadowMapper)
+  const light = shadowMap.lightSource
+  if(light.type === 'directional') {
+    const region = getShadowCasterBounds(scene.activeCamera, scene)
+    //mat4.lookAt(view.viewMatrix, lightWorldPos, [0,0,0], [0,1,0]) as Mat4
+    calculateDirectionalLightMatrices(region, light.direction, view.viewMatrix, view.projection)
   }
+  updateModelViews(scene.root, scene)
+  const cameraViewMatrix = scene.activeCamera.viewMatrix.slice() as Mat4
+
+  mat4.invert(cameraViewMatrix, cameraViewMatrix)
+  mat4.mul(shadowMap._matrix, view.viewMatrix, cameraViewMatrix)
+  mat4.mul(shadowMap._matrix, view.projection, shadowMap._matrix)
+
+  updateShadowMap(shadowMap, scene.renderer.shadowMapper)
 
   scene.uniformFloats.set(view.viewMatrix, UNIFORM_BUFFER_OFFSET_VIEW / 4)
   scene.uniformFloats.set(view.projection, UNIFORM_BUFFER_OFFSET_PROJECTION / 4)
@@ -729,41 +758,54 @@ export function prepareShadowRender(cameraView: View, scene: SceneGraph): void {
 
 /** Set the scene's active view. */
 export function setSceneView(view: View, sceneGraph: SceneGraph): void {
-  sceneGraph.activeView.active = false
+  if(view === sceneGraph.activeView)
+    return
+  //sceneGraph.activeView.active = false
   sceneGraph.activeView = view
-  view.active = true
+  //view.active = true
   setDirty(DirtyFlags.MODEL_VIEW_MATRIX, sceneGraph.root)
 }
 
+/** Set the camera view for the scene.
+ * 
+ * This does not make the camera the active view for rendering. To do that,
+ * use `setSceneView()`.
+ */
+export function setSceneCamera(view: View, scene: SceneGraph): void {
+  if(view.node.nodeType !== 'camera')
+    throw new RatiteError('InvalidArgument', 'Node is not a camera.')
+  scene.activeCamera = view
+}
+
 /** Calculate the model matrix for a node. */
-export function getModelMatrix(node: Node): Mat4 {
+export function getModelMatrix(node: Node, scene: SceneGraph): Mat4 {
   if(isDirty(DirtyFlags.WORLD_TRANSFORM, node)) {
     console.warn('Early world transform update triggered by getModelMatrix()')
-    updateWorldTransforms(node)
+    updateWorldTransforms(node, scene)
   }
   return node._worldTransform
 }
 
 /** Calculate the view matrix for a view. */
-export function getViewMatrix(view: View): Mat4 {
+export function getViewMatrix(view: View, scene: SceneGraph): Mat4 {
   if(!view.node)
     throw new Error('View is not attached to a camera or light node.')
-  const cameraModelMatrix = getModelMatrix(view.node)
+  const cameraModelMatrix = getModelMatrix(view.node, scene)
   mat4.invert(cameraModelMatrix, cameraModelMatrix)
   return cameraModelMatrix
 }
 
 /** Calculate the model-view matrix for a node. */
-export function getModelViewMatrix(node: Node, view: View, out: Mat4 = mat4.create() as Mat4): Mat4 {
-  const modelMatrix = getModelMatrix(node)
-  const viewMatrix = getViewMatrix(view)
+export function getModelViewMatrix(node: Node, view: View, scene: SceneGraph, out: Mat4 = mat4.create() as Mat4): Mat4 {
+  const modelMatrix = getModelMatrix(node, scene)
+  const viewMatrix = getViewMatrix(view, scene)
   mat4.multiply(out, viewMatrix, modelMatrix)
   return out 
 }
 
 /** Calculate the position of a node in world space. */
-export function getNodePosition(node: Node): Vec3 {
-  const modelMatrix = getModelMatrix(node)
+export function getNodePosition(node: Node, scene: SceneGraph): Vec3 {
+  const modelMatrix = getModelMatrix(node, scene)
   return [modelMatrix[12], modelMatrix[13], modelMatrix[14]]
 }
 
@@ -886,20 +928,21 @@ export function getNodeMetaMaterial(node: ModelNode, scene: SceneGraph): MetaMat
   return model.metaMaterial
 }
 
-/** Calculate the bounding volume of visible shadow casters.
+/** Calculate the bounding volume of visible shadow casters for a view.
  * 
  * Assumes that the bounding volumes of all nodes are up to date, since they
  * are being taken from the frustum nodes.
  */
 export function getShadowCasterBounds(
+    view:  View,
     scene: SceneGraph, 
-    out: BoundingVolume = createBoundingVolume()): BoundingVolume {
+    out:   BoundingVolume = createBoundingVolume()): BoundingVolume {
 
   // Reset the bounding volume
   resetBoundingVolume(out)
 
   // Add the bounding volume of each shadow caster
-  for(const node of scene.frustumNodes) {
+  for(const node of view.frustumNodes) {
     const metaMaterial = getNodeMetaMaterial(node, scene)
     if(!metaMaterial.castShadows)
       continue
@@ -920,23 +963,23 @@ export function getShadowCasterBounds(
  * it will be updated. If the node is attached to the active view, the model-
  * view matrix will be marked as dirty for all nodes.
  */
-export function updateWorldTransforms(node: Node): void {
+export function updateWorldTransforms(node: Node, scene: SceneGraph): void {
   const root = getRoot(node)
-  _updateWorldTransforms(root, identityMatrix)
+  _updateWorldTransforms(root, identityMatrix, scene)
 }
 
 /** Internal helper function for updateWorldTransforms. */
-function _updateWorldTransforms(node: Node, current: Mat4): void {
+function _updateWorldTransforms(node: Node, current: Mat4, scene: SceneGraph): void {
   if(!isDirty(DirtyFlags.WORLD_TRANSFORM, node) || node.hidden)
     return
   mat4.multiply(node._worldTransform, current, node.transform)
   for(const child of node.children)
-    _updateWorldTransforms(child, node._worldTransform)
+    _updateWorldTransforms(child, node._worldTransform, scene)
   clearDirty(DirtyFlags.WORLD_TRANSFORM, node)
 
   if((node.nodeType === 'camera' || node.nodeType === 'light') && node.view) {
     mat4.invert(node.view.viewMatrix, node._worldTransform)
-    if(node.view.active)
+    if(scene.activeView === node.view)
       setDirty(DirtyFlags.MODEL_VIEW_MATRIX, node.root)
   }
 }
@@ -954,7 +997,7 @@ export function updateBoundingVolumes(node: Node, scene: SceneGraph): void {
   const root = getRoot(node)
   if(isDirty(DirtyFlags.WORLD_TRANSFORM, root)) {
     console.warn('Early world transform update triggered by updateBoundingVolume()')
-    updateWorldTransforms(root)
+    updateWorldTransforms(root, scene)
   }
   _updateBoundingVolumes(root, scene)
 }
@@ -990,7 +1033,7 @@ export function updateModelViews(root: Node, scene: SceneGraph): void {
     return
   if(isDirty(DirtyFlags.WORLD_TRANSFORM, root)) {
     console.warn('Early world transform update triggered by setModelViewMatrices()')
-    updateWorldTransforms(root)
+    updateWorldTransforms(root, scene)
   }
   _updateModelViews(scene.activeView.viewMatrix, root, scene)
 }
@@ -1035,13 +1078,13 @@ export function updateFrustumTests(root: Node, scene: SceneGraph): void {
     return
   if(isDirty(DirtyFlags.BOUNDING_VOLUME, root)) {
     console.warn('Early bounding volume update triggered by updateFrustumTests()')
-    updateWorldTransforms(root)
+    updateWorldTransforms(root, scene)
     updateBoundingVolumes(root, scene)
   }
   // Calculate the view-projection matrix
-  mat4.mul(tmpMat4_updateFrustumTests, scene.activeView.projection, scene.activeView.viewMatrix)
+  mat4.mul(tmpMat4_updateFrustumTests, scene.activeCamera.projection, scene.activeCamera.viewMatrix)
   // Clear the frustum nodes list
-  scene.frustumNodes.length = 0
+  scene.activeView.frustumNodes.length = 0
   _updateFrustumTests(tmpMat4_updateFrustumTests, root, scene)
 }
 
@@ -1049,13 +1092,13 @@ export function updateFrustumTests(root: Node, scene: SceneGraph): void {
 function _updateFrustumTests(viewProjection: Mat4, node: Node, scene: SceneGraph): void {
   if(!isDirty(DirtyFlags.FRUSTUM_TEST, node) || node.hidden)
     return
-  node._inFrustum = frustumTest(node._boundingVolume, viewProjection)
+  node._inFrustum = node.cullable ? frustumTest(node._boundingVolume, viewProjection) : true
   if(!node._inFrustum) {
     frustumCull(node)
     return
   }
   if(node.nodeType === 'model')
-    scene.frustumNodes.push(node)
+    scene.activeView.frustumNodes.push(node)
   for(const child of node.children)
     _updateFrustumTests(viewProjection, child, scene)
   clearDirty(DirtyFlags.FRUSTUM_TEST, node)
@@ -1069,7 +1112,7 @@ function frustumCull(node: Node): void {
   clearDirty(DirtyFlags.FRUSTUM_TEST, node)
 }
 
-/** Update draw calls for instances currently in the view frustum. */
+/** Update draw calls for instances currently in the active view frustum. */
 export function updateDrawCalls(scene: SceneGraph): void {
   // Clear the active instances and lights
   deactivateAllInstances(scene.renderer.instanceAllocator)
@@ -1077,7 +1120,7 @@ export function updateDrawCalls(scene: SceneGraph): void {
   for(const drawCall of scene.forwardDrawCalls)
     drawCall.instanceCount = 0
   // Activate the instances for the models in the frustum
-  for(const node of scene.frustumNodes) {
+  for(const node of scene.activeView.frustumNodes) {
     activateInstance(node.instanceId, scene.renderer.instanceAllocator)
     scene.forwardDrawCalls[node.drawCallId].instanceCount++
   }

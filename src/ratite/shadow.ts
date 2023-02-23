@@ -32,10 +32,11 @@
  * necessarily omitted from the pipeline layout for shadow mapper depth passes.
  */
 
-import type {ShadowMapperState, ShadowMap, LightSource, Mat4} from './types'
+import type {ShadowMapperState, ShadowMap, LightSource, Mat4, BoundingVolume, Vec3, Vec4} from './types'
 import { SHADOW_MAP_RECORD_SIZE } from './constants.js'
 import { RatiteError } from './error.js'
-import {mat4, glMatrix} from 'gl-matrix'
+import {mat4, glMatrix, vec4, vec3} from 'gl-matrix'
+import { getBoundingVolumeCorners, getTransformedBoundingVolume, isNullBoundingVolume } from './common.js'
 glMatrix.setMatrixArrayType(Array)
 
 
@@ -194,5 +195,60 @@ export function getShadowMap(id: number, shadowMapper: ShadowMapperState): Shado
   if(!shadowMap)
     throw new RatiteError('NotFound', 'No shadow map with that ID.')
   return shadowMap
+}
+
+const _regionCentre    = [0,0,0] as Vec3
+const _sourceDirection = [0,0,0] as Vec3
+const _sourcePosition  = [0,0,0] as Vec3
+const _lookCentre      = [0,0,0] as Vec3
+const _viewMatrix      = mat4.create() as Mat4
+const _up              = [0,1,0] as Vec3
+
+
+
+/** Calculate the matrices for a directional light given a region to cover. */
+export function calculateDirectionalLightMatrices(
+  region: BoundingVolume,
+  direction:  Vec4,
+  viewOutput: Mat4,
+  projectionOutput: Mat4): void {
+
+    // Bail out if the region is the null region.
+    if(isNullBoundingVolume(region)) {
+      mat4.identity(viewOutput)
+      mat4.identity(projectionOutput)
+      return
+    }
+
+    // Find the centre point of the region.
+    _regionCentre[0] = (region.min[0] + region.max[0]) / 2
+    _regionCentre[1] = (region.min[1] + region.max[1]) / 2
+    _regionCentre[2] = (region.min[2] + region.max[2]) / 2
+
+    // Get the point for the view matrix to look at
+    _lookCentre[0] = _regionCentre[0] + direction[0]
+    _lookCentre[1] = _regionCentre[1] + direction[1]
+    _lookCentre[2] = _regionCentre[2] + direction[2]
+
+    // Calculate an initial view matrix for the light source.
+    mat4.lookAt(viewOutput, _regionCentre, _lookCentre, _up)
+
+    // Find the dimensions of the orthographic projection.
+    const projBounds = getTransformedBoundingVolume(region, viewOutput)
+    const projWidth  = projBounds.max[0] - projBounds.min[0]
+    const projHeight = projBounds.max[1] - projBounds.min[1]
+    const projDepth  = projBounds.max[2] - projBounds.min[2]
+
+    // Move the light source back to cover the region.
+    _sourcePosition[0] = _regionCentre[0] - direction[0] * projDepth
+    _sourcePosition[1] = _regionCentre[1] - direction[1] * projDepth
+    _sourcePosition[2] = _regionCentre[2] - direction[2] * projDepth
+
+    //mat4.lookAt(viewOutput, _sourcePosition, _regionCentre, _up)
+
+    // Calculate the projection matrix for the light source.
+    //mat4.orthoZO(projectionOutput, -projWidth/2, projWidth/2, -projHeight/2, projHeight/2, 0, projDepth)
+    mat4.orthoZO(projectionOutput, -10, 10, -10, 10, -10, 10 )
+
 }
 

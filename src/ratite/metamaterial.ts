@@ -151,7 +151,7 @@ export function createMetaMaterial(
     name:        descriptor.name,
     layout:      descriptor.layout,
     usage:       0,
-    castShadows: descriptor.castShadows ?? true,
+    castShadows: 'castShadows' in descriptor ? descriptor.castShadows : true,
     pipelines: {
       forward:   forwardPipeline,
       shadow:    shadowPipeline,

@@ -1,4 +1,4 @@
-import type { InitMessage, InputState, ErrorMessage, Message, WorkerState, FrameStats } from './types'
+import type { InitMessage, InputState, ErrorMessage, Message, WorkerState, FrameStats, QueryMessage, QueryResultMessage, QueryResult } from './types'
 import type { Mat4, ErrorType, MatrixDescriptor, Quat, CameraNode, GPUContext, Renderable, SceneGraph } from './ratite/types'
 import { initGPU } from './ratite/gpu.js'
 import { createRenderer, renderFrame } from './ratite/render.js'
@@ -153,7 +153,7 @@ async function init(opts: InitMessage): Promise<void> {
 
   state.legacyScene = await createScene(state.renderer.mainUniformBuffer, state.gpu)
   state.sceneGraph = bundle.scenes[0] //setupSceneGraph(renderer)
-  state.mainCamera = state.sceneGraph.views.default.node as CameraNode
+  state.mainCamera = state.sceneGraph.activeCamera.node as CameraNode
   const telescopeNode = getNodeByName('telescope', state.sceneGraph)
   state.telescope = createTelescope(telescopeNode, defaultTelescopeDescriptor, state.sceneGraph)
   state.lastPhysicsFrame = performance.now()
@@ -259,10 +259,75 @@ onmessage = async (event: MessageEvent<Message>) => {
       const image = await exportDepthMapLayer(0, 0.05, 1, state.depthMapExporter)
       const response = {type: 'response', correlationId: event.data.id, data: image}
       postMessage(response, {transfer: [image]})
+      break
+    case 'query':
+      handleQuery(event.data)
+      break
     default:
       report(new RatiteError('InternalError', `Bad event type: ${event.data.type}`))
   }
 }
+
+async function handleQuery(queryMessage: QueryMessage): Promise<void> {
+  const query = queryMessage.query
+  const response: QueryResultMessage = {
+    type:          'queryResult',
+    id:            nextMessageId++,
+    correlationId: queryMessage.id, 
+    result:        null,
+  }
+  let options: WindowPostMessageOptions = {}
+  switch(query.queryType) {
+  case 'getSceneGraph':
+    response.result = {
+      queryType:  query.queryType,
+      sceneGraph: state.sceneGraph.root,
+    }
+    break
+  case 'getViews':
+    response.result = {
+      queryType: query.queryType, 
+      views:     Object.values(state.sceneGraph.views),
+    }
+    break
+  case 'getLights':
+    response.result = {
+      queryType: query.queryType,
+      lights:    state.sceneGraph.lightingState.lightSources
+    }
+    break
+  case 'getShadowMaps':
+    response.result = {
+      queryType:  query.queryType, 
+      shadowMaps: state.renderer.shadowMapper.slots.map(obj => ({
+        id:          obj.id,
+        slot:        obj.slot,
+        lightSource: obj.lightSource,
+        layer:       obj.layer,
+        _matrix:     obj._matrix,
+      }))
+    }
+    break
+  case 'getShadowMapImage':
+    const image = await exportDepthMapLayer(
+      query.shadowMapId,
+      query.depthMin,
+      query.depthMax,
+      state.depthMapExporter
+    )
+    response.result = {
+      queryType: query.queryType,
+      image:     image,
+    }
+    options.transfer = [image]
+    break
+  //default:
+  //  report(new RatiteError('NotImplemented', `Unsupported query type: ${query.queryType}`))
+  }
+  postMessage(response, options)
+}
+
+
 
 /** Report an error to the controlling thread. */
 function report(error: RatiteError, correlationId: number = null): void {

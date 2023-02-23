@@ -5,6 +5,7 @@ import type { InspectorAgent } from './common'
 import type { SceneInspectorState } from './scene.js'
 import { createSceneInspector, showSceneInspector, hideSceneInspector } from './scene.js'
 import { createElement } from './common.js'
+import { ViewInspectorState, createViewInspector, hideViewInspector, showViewInspector } from './views.js'
 
 /** Inspector state. */
 export type InspectorState = {
@@ -13,6 +14,8 @@ export type InspectorState = {
   agent:               InspectorAgent,      // The inspector agent.
   active:              boolean,             // Whether the inspector is active and visible.
   sceneInspector:      SceneInspectorState, // The scene inspector state.
+  viewInspector:       ViewInspectorState,  // The view inspector state.
+  autoRefresh:         number | null,       // The auto refresh interval ID, or null if not auto refreshing.
 }
 
 /** Inspector UI elements. */
@@ -121,24 +124,34 @@ export function createDebugInspector(agent: InspectorAgent): InspectorState {
     elements:            elems,
     agent:               agent,
     active:              false,
-    sceneInspector:      createSceneInspector(elems.content, agent),
+    sceneInspector:      null,
+    viewInspector:       null,
+    autoRefresh:         null,
   }
+  state.sceneInspector = createSceneInspector(elems.content, agent, state),
+  state.viewInspector = createViewInspector(elems.content, agent, state),
+  
 
   // Add event listeners.
-  elems.titleBar.buttons.refresh.addEventListener('click', createButtonHandler(refreshInspector, state))
+  makeStickyButton(
+    refreshInspector, 
+    startAutoRefresh,
+    stopAutoRefresh,
+    elems.titleBar.buttons.refresh,
+    state)
   elems.titleBar.buttons.close.addEventListener('click',   createButtonHandler(hideInspector,    state))
   elems.sideBar.scene.addEventListener('click',     createSidebarItemHandler('scene',     showSceneInspectorSection, state))
-  elems.sideBar.materials.addEventListener('click', createSidebarItemHandler('materials', showMaterialsInspector, state))
-  elems.sideBar.atlas.addEventListener('click',     createSidebarItemHandler('atlas',     showAtlasInspector,     state))
-  elems.sideBar.shaders.addEventListener('click',   createSidebarItemHandler('shaders',   showShadersInspector,   state))
-  elems.sideBar.buffers.addEventListener('click',   createSidebarItemHandler('buffers',   showBuffersInspector,   state))
-  elems.sideBar.lights.addEventListener('click',    createSidebarItemHandler('lights',    showLightsInspector,    state))
-  elems.sideBar.cameras.addEventListener('click',   createSidebarItemHandler('cameras',   showCamerasInspector,   state))
-  elems.sideBar.meshes.addEventListener('click',    createSidebarItemHandler('meshes',    showMeshesInspector,    state))
-  elems.sideBar.models.addEventListener('click',    createSidebarItemHandler('models',    showModelsInspector,    state))
-  elems.sideBar.shadows.addEventListener('click',   createSidebarItemHandler('shadows',   showShadowsInspector,   state))
-  elems.sideBar.instances.addEventListener('click', createSidebarItemHandler('instances', showInstancesInspector, state))
-  elems.sideBar.views.addEventListener('click',     createSidebarItemHandler('views',     showViewsInspector,     state))
+  elems.sideBar.materials.addEventListener('click', createSidebarItemHandler('materials', showMaterialsInspector,    state))
+  elems.sideBar.atlas.addEventListener('click',     createSidebarItemHandler('atlas',     showAtlasInspector,        state))
+  elems.sideBar.shaders.addEventListener('click',   createSidebarItemHandler('shaders',   showShadersInspector,      state))
+  elems.sideBar.buffers.addEventListener('click',   createSidebarItemHandler('buffers',   showBuffersInspector,      state))
+  elems.sideBar.lights.addEventListener('click',    createSidebarItemHandler('lights',    showLightsInspector,       state))
+  elems.sideBar.cameras.addEventListener('click',   createSidebarItemHandler('cameras',   showCamerasInspector,      state))
+  elems.sideBar.meshes.addEventListener('click',    createSidebarItemHandler('meshes',    showMeshesInspector,       state))
+  elems.sideBar.models.addEventListener('click',    createSidebarItemHandler('models',    showModelsInspector,       state))
+  elems.sideBar.shadows.addEventListener('click',   createSidebarItemHandler('shadows',   showShadowsInspector,      state))
+  elems.sideBar.instances.addEventListener('click', createSidebarItemHandler('instances', showInstancesInspector,    state))
+  elems.sideBar.views.addEventListener('click',     createSidebarItemHandler('views',     showViewInspectorSection,  state))
 
   elems.sideBar.scene.click()
   // Hide the close button for the very silly reason that I can't figure out 
@@ -176,9 +189,28 @@ export async function refreshInspector(state: InspectorState): Promise<void> {
   }
 }
 
+/** Start the auto-refresh timer. */
+export function startAutoRefresh(state: InspectorState): void {
+  if (state.autoRefresh) {
+    return
+  }
+  state.autoRefresh = window.setInterval(() => {
+    refreshInspector(state)
+  }, 500)
+}
+
+/** Stop the auto-refresh timer. */
+export function stopAutoRefresh(state: InspectorState): void {
+  if (!state.autoRefresh) {
+    return
+  }
+  window.clearInterval(state.autoRefresh)
+  state.autoRefresh = null
+}
+
 /** Show the "scene" inspector section. */
 export async function showSceneInspectorSection(state: InspectorState): Promise<void> {
-  showSceneInspector(state.sceneInspector) 
+  await showSceneInspector(state.sceneInspector) 
 }
 
 /** Show the "materials" inspector section. */
@@ -232,16 +264,50 @@ export async function showInstancesInspector(state: InspectorState): Promise<voi
 }
 
 /** Show the "views" inspector section. */
-export async function showViewsInspector(state: InspectorState): Promise<void> {
-  state.elements.content.innerHTML = ''
+export async function showViewInspectorSection(state: InspectorState): Promise<void> {
+  await showViewInspector(state.viewInspector)
+}
+
+export function closeCurrentSection(state: InspectorState): void {
+  if (state.selectedSidebarItem) {
+    switch(state.selectedSidebarItem) {
+    case 'scene':
+      hideSceneInspector(state.sceneInspector)
+      break
+    case 'views':
+      hideViewInspector(state.viewInspector)
+      break
+    default:
+      state.elements.content.innerHTML = ''
+    }
+    state.elements.sideBar[state.selectedSidebarItem].classList.remove('ri-sidebar-item-selected')
+    state.selectedSidebarItem = null
+  }
+}
+
+export async function openSection(name: string, state: InspectorState): Promise<void> {
+  closeCurrentSection(state)
+  state.elements.titleBar.title.innerText = sectionNames.get(name)
+  state.elements.sideBar[name].classList.add('ri-sidebar-item-selected')
+  state.selectedSidebarItem = name
+  switch(name) {
+  case 'scene':
+    await showSceneInspector(state.sceneInspector)
+    break
+  case 'views':
+    await showViewInspector(state.viewInspector)
+    break
+  default:
+    state.elements.content.innerHTML = ''
+  }
 }
 
 /** Create a handler for selecting a sidebar item. */
 function createSidebarItemHandler(name: string, fn: (state: InspectorState) => void, state: InspectorState): (event: Event) => void {
   return (event: Event) => {
+    event.stopPropagation()
+    closeCurrentSection(state)
     state.elements.titleBar.title.innerText = sectionNames.get(name)
-    if(state.selectedSidebarItem)
-      state.elements.sideBar[state.selectedSidebarItem].classList.remove('ri-sidebar-item-selected')
     state.elements.sideBar[name].classList.add('ri-sidebar-item-selected')
     state.selectedSidebarItem = name
     fn(state)
@@ -254,6 +320,41 @@ function createButtonHandler(fn: (state: InspectorState) => void, state: Inspect
     event.stopPropagation()
     fn(state)
   }
+}
+
+/** Create a handler for clicking a sticky button.
+ * 
+ * A sticky button is an ordinary button when activated in the normal way, but
+ * when activated by a right-click, holding control, or a long press, it becomes
+ * "sticky" and remains active until clicked or tapped again.
+ */
+function makeStickyButton(
+    onClick:   (state: InspectorState) => void, 
+    onStick:   (state: InspectorState) => void,
+    onUnstick: (state: InspectorState) => void,
+    element:   HTMLElement,
+    state:     InspectorState): void {
+  let stick = false
+  const handler = (event: Event) => {
+    event.stopPropagation()
+    event.preventDefault()
+    if (event instanceof MouseEvent) {
+      if(stick) {
+        stick = false
+        element.classList.remove('ri-sticky')
+        onUnstick(state)
+      } else if(event.button === 0 && !event.ctrlKey) { 
+        onClick(state)
+      } else if(event.button === 2 || event.ctrlKey) {
+        // TODO: handle long tap
+        stick = true
+        element.classList.add('ri-sticky')
+        onStick(state)
+      }
+    }
+  }
+  element.addEventListener('click', handler)
+  element.addEventListener('contextmenu', handler)
 }
 
 

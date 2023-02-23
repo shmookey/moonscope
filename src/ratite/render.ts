@@ -8,7 +8,7 @@ import {createInstanceAllocator} from './instance.js'
 import {INDEX_SIZE, INSTANCE_INDEX_SIZE, UNIFORM_BUFFER_FLOATS, 
   VERTEX_SIZE} from './constants.js'
 import {createMeshStore} from './mesh.js'
-import {prepareForwardRender, prepareShadowRender, setSceneView} from './scene.js'
+import {prepareForwardRender, prepareShadowRender, setSceneView, prepareFrame} from './scene.js'
 import {updateLightingBuffer} from './lighting.js'
 import { createMaterialState } from './material.js'
 import { createMetaMaterialState } from './metamaterial.js'
@@ -106,18 +106,6 @@ export function renderView(
     pass:       GPURenderPassDescriptor, 
     gpu:        GPUContext) {
 
-  // Todo: only update if camera is dirty
-  //getCameraViewMatrix(state.viewMatrix, cam)
-  //state.uniformData.set(sceneGraph.views.default.viewMatrix, 0)
-  //state.uniformData.set(sceneGraph.views.default.projection, 16)
-  //gpu.device.queue.writeBuffer(state.mainUniformBuffer, 0, state.uniformData)
-  
-  //cam.isDirty = false
-
-  
-
-  renderDepthPass(sceneGraph)
-
   const commandEncoder = gpu.device.createCommandEncoder()
   prepareForwardRender(sceneGraph)
   //updateLightingBuffer(sceneGraph.lightingState)
@@ -167,8 +155,8 @@ export function renderDepthPass(
     if(!shadowMap)
       continue
     const commandEncoder = device.createCommandEncoder()
-    setSceneView(scene.views['shadow-caster-1'], scene)
-    prepareShadowRender(cameraView, scene)
+    setSceneView(scene.views['sunlight-view'], scene)
+    prepareShadowRender(scene)
     const passEncoder = commandEncoder.beginRenderPass(shadowMap.renderPass)
     for(let call of scene.forwardDrawCalls) {
       if(call.instanceCount === 0)
@@ -204,9 +192,10 @@ export function renderFrame(scene: Scene, sceneGraph: SceneGraph, state: Rendere
     .getCurrentTexture()
     .createView()
   }
-  
-
-  
+  // Enssure the correct view is active
+  setSceneView(sceneGraph.activeCamera, sceneGraph)
+  prepareFrame(sceneGraph)
+  renderDepthPass(sceneGraph)
   renderView(sceneGraph, state, gpu.renderPassDescriptor, gpu)
   gpu.renderPassDescriptor.depthStencilAttachment = undefined
 //}, 0)

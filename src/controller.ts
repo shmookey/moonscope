@@ -5,14 +5,21 @@
  * communicating with the worker.
  */
 
-import type { InitMessage, InputState, ResponseMessage, WorkerController } from "./types"
+import type { InitMessage, InputState, Query, QueryMessage, QueryResult, QueryResultMessage, QueryType, ResponseMessage, WorkerController } from "./types"
 
 /** Create a worker controller. */
 export function createWorkerController(): WorkerController {
   const worker = new Worker(new URL('/build/src/worker.js', import.meta.url), {type: 'module'})
   const status = 'created'
   const listeners = {}
-  const controller: WorkerController = {status, worker, listeners, nextId: 0, callbacks: {}}
+  const controller: WorkerController = {
+    status, 
+    worker, 
+    listeners, 
+    nextId:    0, 
+    callbacks: {},
+    queries:   {},
+  }
   worker.onmessage = createMessageHandler(controller)
   addWorkerEventListener('ready',   () => { controller.status = 'idle' },    controller)
   addWorkerEventListener('started', () => { controller.status = 'running' }, controller)
@@ -22,6 +29,14 @@ export function createWorkerController(): WorkerController {
     const callback = controller.callbacks[ev.correlationId]
     if(callback)
       callback(ev.data)
+    else
+      console.warn(`No callback for message ${ev.correlationId}`)
+  }, controller)
+  addWorkerEventListener('queryResult', (ev: QueryResultMessage) => {
+    console.info(`Query result received for #${ev.correlationId} with result:`, ev.result)
+    const callback = controller.queries[ev.correlationId]
+    if(callback)
+      callback(ev.result)
     else
       console.warn(`No callback for message ${ev.correlationId}`)
   }, controller)
@@ -101,6 +116,23 @@ export function sendWorkerRequest(data: any, controller: WorkerController): Prom
     resolver = resolve
   })
   controller.callbacks[callId] = resolver
+  return promise
+}
+
+/** Query the worker. */
+export function queryWorker<T extends QueryResult>(query: Query, controller: WorkerController): Promise<T> {
+  const callId = controller.nextId++
+  const msg: QueryMessage = {
+    type:  'query', 
+    query: query, 
+    id:    callId
+  }
+  controller.worker.postMessage(msg)
+  let resolver = null
+  const promise = new Promise<T>((resolve) => {
+    resolver = resolve
+  })
+  controller.queries[callId] = resolver
   return promise
 }
 
